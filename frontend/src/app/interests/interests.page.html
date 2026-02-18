@@ -1,0 +1,62 @@
+<ion-page>
+  <ion-content fullscreen>
+
+    <div class="container">
+      <!-- Status bar spacer -->
+      <div class="status-bar"></div>
+
+      <!-- Main -->
+      <main>
+        <div class="content" @fadeIn>
+          <h1>What are you interested in?</h1>
+          <p class="subtitle">
+            Select topics to personalize your experience
+          </p>
+
+          <div class="interests">
+            <ion-button
+              *ngFor="let interest of INTERESTS"
+              size="small"
+              shape="round"
+              fill="outline"
+              (click)="toggleInterest(interest)"
+              [class.selected]="selected.includes(interest)"
+            >
+              <ion-icon
+                *ngIf="selected.includes(interest)"
+                name="checkmark"
+                slot="start"
+              ></ion-icon>
+              {{ interest }}
+            </ion-button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+  </ion-content>
+
+  <!-- Footer -->
+  <ion-footer>
+    <div class="footer">
+      <ion-button
+        expand="block"
+        shape="round"
+        [disabled]="!isContinueEnabled"
+        (click)="goToBrowse()"
+        class="continue-btn"
+      >
+        Continue
+      </ion-button>
+
+      <ion-button
+        expand="block"
+        fill="clear"
+        class="skip-btn"
+        (click)="goToBrowse()"
+      >
+        Skip for now
+      </ion-button>
+    </div>
+  </ion-footer>
+</ion-page>
