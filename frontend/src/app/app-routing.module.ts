@@ -11,6 +11,26 @@ const routes: Routes = [
     redirectTo: 'home',
     pathMatch: 'full'
   },
+  {
+    path: 'login',
+    loadChildren: () => import('./pages/login/login.module').then( m => m.LoginPageModule)
+  },
+  {
+    path: 'client',
+    loadComponent: () =>
+      import('./pages/client-welcome/client-welcome.page').then((m) => m.ClientWelcomePage)
+  },
+  {
+    path: 'freelancer',
+    loadComponent: () =>
+      import('./pages/freelancer-welcome/freelancer-welcome.page').then((m) => m.FreelancerWelcomePage)
+  },
+  {
+    path: 'admin',
+    loadComponent: () =>
+      import('./pages/admin-welcome/admin-welcome.page').then((m) => m.AdminWelcomePage)
+  },
+
 ];
 
 @NgModule({
