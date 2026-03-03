@@ -1,0 +1,8 @@
+{
+  "name": "freelancehub-mobile",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react",
+  "id": "freelancehubmobile"
+}
