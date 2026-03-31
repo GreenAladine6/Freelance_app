@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+venv/
+env/
+instance/
+
+# Node / npm
+node_modules/
+dist/
+.cache/
+*.local
+
+# Vite build output
+Freelance_app/mobile/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Ionic / Capacitor
+Freelance_app/mobile/.angular/

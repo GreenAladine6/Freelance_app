@@ -1,0 +1,21 @@
+{
+  "appId": "com.freelancehub.mobile",
+  "appName": "FreelanceHub",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#8B5CF6",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "backgroundColor": "#8B5CF6",
+      "style": "dark"
+    }
+  }
+}
