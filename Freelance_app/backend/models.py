@@ -1,11 +1,12 @@
 from pymongo import MongoClient
 import os
+import certifi
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from bson.objectid import ObjectId
 from config import Config
 
-client = MongoClient(Config.MONGO_URI)
+client = MongoClient(Config.MONGO_URI, tlsCAFile=certifi.where())
 db = client.get_default_database()
 
 class User:
