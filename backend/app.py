@@ -2,9 +2,13 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from config import config
 from routes import api
-
 
 def create_app(config_name=None):
     """Application factory pattern."""
@@ -15,7 +19,15 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     
     # Initialize extensions
-    CORS(app)
+    CORS(
+        app,
+        origins="*",
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["Content-Type", "Authorization", "Accept"],
+        expose_headers=["Content-Type", "Authorization"],
+        supports_credentials=False,
+        max_age=600,
+    )
     jwt = JWTManager(app)
     
     # Register blueprints

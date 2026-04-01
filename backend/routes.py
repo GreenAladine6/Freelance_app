@@ -5,7 +5,7 @@ from flask_jwt_extended import (
 )
 from datetime import datetime
 from bson.objectid import ObjectId
-from models import User, Job, Application
+from models import User, Job, Application, Conversation, Message, Product
 
 api = Blueprint('api', __name__)
 
@@ -129,6 +129,12 @@ def update_current_user():
         update_data['skills'] = data['skills']
     if 'hourly_rate' in data:
         update_data['hourly_rate'] = data['hourly_rate']
+    if 'education' in data:
+        update_data['education'] = data['education']
+    if 'experience' in data:
+        update_data['experience'] = data['experience']
+    if 'portfolio' in data:
+        update_data['portfolio'] = data['portfolio']
     
     if update_data:
         User.collection.update_one({'_id': ObjectId(current_user_id)}, {'$set': update_data})
@@ -438,6 +444,146 @@ def get_freelancers():
     
     return jsonify([User.to_dict(f) for f in freelancers_cursor]), 200
 
+
+# ==================== Admin Routes ====================
+
+@api.route('/admin/stats', methods=['GET'])
+@jwt_required()
+def get_admin_stats():
+    """Get platform-wide statistics (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    total_users = User.collection.count_documents({})
+    freelancers = User.collection.count_documents({'user_type': 'freelancer'})
+    clients = User.collection.count_documents({'user_type': 'client'})
+    open_jobs = Job.collection.count_documents({'status': 'open'})
+    total_jobs = Job.collection.count_documents({})
+    total_applications = Application.collection.count_documents({})
+    pending_applications = Application.collection.count_documents({'status': 'pending'})
+
+    return jsonify({
+        'total_users': total_users,
+        'freelancers': freelancers,
+        'clients': clients,
+        'open_jobs': open_jobs,
+        'total_jobs': total_jobs,
+        'total_applications': total_applications,
+        'pending_applications': pending_applications,
+    }), 200
+
+
+# ==================== Chat Routes ====================
+
+@api.route('/conversations', methods=['GET'])
+@jwt_required()
+def get_conversations():
+    """Get all conversations for current user."""
+    current_user_id = get_jwt_identity()
+    convs = Conversation.collection.find({
+        'participants': ObjectId(current_user_id)
+    }).sort('last_message_at', -1)
+    
+    return jsonify([Conversation.to_dict(c, current_user_id) for c in convs]), 200
+
+@api.route('/conversations/<conversation_id>', methods=['GET'])
+@jwt_required()
+def get_conversation(conversation_id):
+    """Get conversation details."""
+    current_user_id = get_jwt_identity()
+    conv = Conversation.collection.find_one({'_id': ObjectId(conversation_id)})
+    if not conv or ObjectId(current_user_id) not in conv.get('participants', []):
+        return jsonify({'error': 'Conversation not found or access denied'}), 404
+    
+    return jsonify(Conversation.to_dict(conv, current_user_id)), 200
+
+@api.route('/conversations/<conversation_id>/messages', methods=['GET'])
+@jwt_required()
+def get_messages(conversation_id):
+    """Get messages for a specific conversation."""
+    current_user_id = get_jwt_identity()
+    # Verify participant
+    conv = Conversation.collection.find_one({'_id': ObjectId(conversation_id)})
+    if not conv or ObjectId(current_user_id) not in conv.get('participants', []):
+        return jsonify({'error': 'Conversation not found or access denied'}), 404
+        
+    msgs = Message.collection.find({
+        'conversation_id': ObjectId(conversation_id)
+    }).sort('created_at', 1)
+    
+    return jsonify([Message.to_dict(m) for m in msgs]), 200
+
+@api.route('/messages', methods=['POST'])
+@jwt_required()
+def send_message():
+    """Send a message (creates conversation if doesn't exist)."""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    recipient_id = data.get('recipient_id')
+    conversation_id = data.get('conversation_id')
+    text = data.get('text')
+    
+    if not text:
+        return jsonify({'error': 'Message text is required'}), 400
+        
+    if conversation_id:
+        conv = Conversation.collection.find_one({'_id': ObjectId(conversation_id)})
+    elif recipient_id:
+        conv = Conversation.get_or_create(current_user_id, recipient_id)
+    else:
+        return jsonify({'error': 'Recipient or conversation ID required'}), 400
+        
+    msg_doc = {
+        'conversation_id': conv['_id'],
+        'sender_id': ObjectId(current_user_id),
+        'text': text,
+        'is_read': False,
+        'created_at': datetime.utcnow()
+    }
+    
+    res = Message.collection.insert_one(msg_doc)
+    Conversation.collection.update_one(
+        {'_id': conv['_id']},
+        {'$set': {'last_message_at': datetime.utcnow()}}
+    )
+    
+    return jsonify(Message.to_dict(Message.collection.find_one({'_id': res.inserted_id}))), 201
+
+# ==================== Store Routes ====================
+
+@api.route('/products', methods=['GET'])
+def get_products():
+    """Get all store products."""
+    category = request.args.get('category')
+    query = {}
+    if category:
+        query['category'] = category
+        
+    products = Product.collection.find(query).sort('created_at', -1)
+    return jsonify([Product.to_dict(p) for p in products]), 200
+
+@api.route('/products', methods=['POST'])
+@jwt_required()
+def add_product():
+    """Add a product to the store (admin/top freelancers)."""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    product_doc = {
+        'name': data.get('name'),
+        'description': data.get('description'),
+        'price': data.get('price'),
+        'image_url': data.get('image_url'),
+        'category': data.get('category'),
+        'seller_id': ObjectId(current_user_id),
+        'created_at': datetime.utcnow()
+    }
+    
+    res = Product.collection.insert_one(product_doc)
+    return jsonify(Product.to_dict(Product.collection.find_one({'_id': res.inserted_id}))), 201
 
 # ==================== Health Check ====================
 
