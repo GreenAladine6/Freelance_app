@@ -45,10 +45,10 @@ export class LoginPage {
         // Backend returns `user_type` field (admin|client|freelancer)
         const userType = res.user?.user_type;
 
-        if (userType === 'client') this.router.navigate(['/client']);
-        else if (userType === 'freelancer') this.router.navigate(['/freelancer']);
-        else if (userType === 'admin') this.router.navigate(['/admin']);
-        else this.router.navigate(['/home']);
+        if (userType === 'client') this.router.navigate(['/dashboard-client']);
+        else if (userType === 'freelancer') this.router.navigate(['/dashboard']);
+        else if (userType === 'admin') this.router.navigate(['/dashboard-admin']);
+        else this.router.navigate(['/dashboard']);
       },
       error: async (err) => {
         this.loading = false;

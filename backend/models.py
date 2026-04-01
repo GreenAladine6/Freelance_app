@@ -1,12 +1,19 @@
 from pymongo import MongoClient
 import os
+import certifi
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from bson.objectid import ObjectId
 from config import Config
 
-client = MongoClient(Config.MONGO_URI)
-db = client.get_default_database()
+if '+srv' in Config.MONGO_URI:
+    client = MongoClient(Config.MONGO_URI, tlsCAFile=certifi.where())
+else:
+    client = MongoClient(Config.MONGO_URI)
+try:
+    db = client.get_default_database()
+except Exception:
+    db = client['freelanceapp']
 
 class User:
     collection = db.users
@@ -23,6 +30,9 @@ class User:
             'bio': bio,
             'skills': skills,
             'hourly_rate': hourly_rate,
+            'education': [],
+            'experience': [],
+            'portfolio': [],
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -66,7 +76,83 @@ class User:
             'bio': user_doc.get('bio'),
             'skills': user_doc.get('skills'),
             'hourly_rate': user_doc.get('hourly_rate'),
+            'education': user_doc.get('education', []),
+            'experience': user_doc.get('experience', []),
+            'portfolio': user_doc.get('portfolio', []),
             'created_at': user_doc.get('created_at').isoformat() if hasattr(user_doc.get('created_at'), 'isoformat') else user_doc.get('created_at')
+        }
+
+class Conversation:
+    collection = db.conversations
+
+    @staticmethod
+    def get_or_create(user1_id, user2_id):
+        ids = sorted([str(user1_id), str(user2_id)])
+        participants = [ObjectId(id) for id in ids]
+        
+        conv = Conversation.collection.find_one({
+            'participants': {'$all': participants, '$size': 2}
+        })
+        
+        if not conv:
+            conv_doc = {
+                'participants': participants,
+                'created_at': datetime.utcnow(),
+                'last_message_at': datetime.utcnow()
+            }
+            res = Conversation.collection.insert_one(conv_doc)
+            return Conversation.collection.find_one({'_id': res.inserted_id})
+        return conv
+
+    @staticmethod
+    def to_dict(doc, current_user_id=None):
+        if not doc: return None
+        participants_ids = [str(pid) for pid in doc.get('participants', [])]
+        other_user_id = next((pid for pid in participants_ids if pid != str(current_user_id)), None)
+        other_user = User.get_by_id(other_user_id) if other_user_id else None
+        
+        last_msg = Message.collection.find_one(
+            {'conversation_id': doc['_id']},
+            sort=[('created_at', -1)]
+        )
+
+        return {
+            'id': str(doc['_id']),
+            'last_message_at': doc.get('last_message_at').isoformat() if hasattr(doc.get('last_message_at'), 'isoformat') else None,
+            'other_user': User.to_dict(other_user) if other_user else None,
+            'last_message': Message.to_dict(last_msg) if last_msg else None
+        }
+
+class Message:
+    collection = db.messages
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc: return None
+        return {
+            'id': str(doc['_id']),
+            'conversation_id': str(doc.get('conversation_id')),
+            'sender_id': str(doc.get('sender_id')),
+            'text': doc.get('text'),
+            'is_read': doc.get('is_read', False),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+class Product:
+    collection = db.products
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc: return None
+        return {
+            'id': str(doc['_id']),
+            'name': doc.get('name'),
+            'description': doc.get('description'),
+            'price': doc.get('price'),
+            'image_url': doc.get('image_url'),
+            'category': doc.get('category'),
+            'seller_id': str(doc.get('seller_id')),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }
 
 class Job:
@@ -92,11 +178,11 @@ class Job:
             'duration': job_doc.get('duration'),
             'skills_required': job_doc.get('skills_required'),
             'client_id': str(client_id) if client_id else None,
-            'client_name': client.get('full_name') if client else None,
+            'client_name': (client.get('full_name') or client.get('username')) if client else None,
             'status': job_doc.get('status', 'open'),
             'created_at': job_doc.get('created_at').isoformat() if hasattr(job_doc.get('created_at'), 'isoformat') else None,
             'updated_at': job_doc.get('updated_at').isoformat() if hasattr(job_doc.get('updated_at'), 'isoformat') else None,
-            'application_count': Application.collection.count_documents({'job_id': str(job_doc['_id'])})
+            'application_count': Application.collection.count_documents({'job_id': job_doc['_id']})
         }
 
 class Application:

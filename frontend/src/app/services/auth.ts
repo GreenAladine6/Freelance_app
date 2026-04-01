@@ -1,34 +1,28 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { ApiService } from './api.service';
+import { RoleService } from './role.service';
+import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  // Base URL of the Flask backend (see backend app.py where blueprint is registered with url_prefix='/api')
-  private apiUrl = 'http://localhost:5000/api';
+  constructor(private api: ApiService, private role: RoleService) { }
 
-  constructor(private http: HttpClient) {}
-
-  login(email: string, password: string) {
-    // Backend exposes POST /api/login in routes.py
-    return this.http.post<any>(`${this.apiUrl}/login`, { email, password }).pipe(
-      tap(res => {
-        localStorage.setItem('access_token', res.access_token);
-        localStorage.setItem('user', JSON.stringify(res.user));
-      })
+  login(email: string, password: string): Observable<any> {
+    return this.api.login(email, password).pipe(
+      tap(res => this.role.handleLoginSuccess(res))
     );
   }
 
-  logout() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
+  logout(): void {
+    this.role.logout();
   }
 
   isLoggedIn(): boolean {
-    return !!localStorage.getItem('access_token');
+    return this.role.isAuthenticated;
   }
 
   getToken(): string | null {
-    return localStorage.getItem('access_token');
+    return this.role.accessToken;
   }
 }

@@ -19,7 +19,13 @@ dist/
 *.local
 
 # Vite build output
-Freelance_app/mobile/dist/
+mobile/dist/
+
+# Angular cache
+.angular/
+
+# Build output
+www/
 
 # Logs
 *.log
@@ -33,4 +39,4 @@ Thumbs.db
 .vscode/
 
 # Ionic / Capacitor
-Freelance_app/mobile/.angular/
+mobile/.angular/
