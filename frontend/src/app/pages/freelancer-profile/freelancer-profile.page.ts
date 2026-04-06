@@ -34,6 +34,10 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
           </div>
           <p *ngIf="rate" class="rate-text">{{ rate }}</p>
           <p class="availability-text">Available for hire</p>
+          <button *ngIf="!isOwnProfile" class="message-btn" (click)="goToMessages()">
+            <ion-icon name="chatbubbles-outline"></ion-icon>
+            Message
+          </button>
         </div>
       </div>
 
@@ -144,6 +148,12 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .text-muted { color: #9CA3AF; font-weight: 500; }
     .rate-text { font-size: 12px; font-weight: 700; color: #8B5CF6; margin: 0 0 4px; }
     .availability-text { font-size: 12px; font-weight: 700; color: #16a34a; margin: 0; }
+    .message-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-top: 16px; padding: 10px 18px; border-radius: 9999px;
+      background: #8B5CF6; color: white; border: none;
+      font-size: 12px; font-weight: 700;
+    }
     .content-sections { padding: 0 16px; margin-top: -24px; position: relative; z-index: 10; display: flex; flex-direction: column; gap: 16px; padding-bottom: 100px; }
     .section-card { background: white; border-radius: 16px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
     .section-card h3 { font-size: 14px; font-weight: 700; color: #111827; margin: 0 0 12px; }
@@ -246,6 +256,14 @@ export class FreelancerProfilePage implements OnInit {
 
   goBack() {
     this.router.navigate(['/dashboard']);
+  }
+
+  goToMessages() {
+    if (!this.roleService.isAuthenticated) {
+      this.router.navigate(['/login']);
+      return;
+    }
+    this.router.navigate(['/conversations']);
   }
 
   openEdit() {

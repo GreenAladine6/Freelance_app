@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { ActivatedRoute, Router } from '@angular/router';
+import { ToastController } from '@ionic/angular';
 import { ApiService, ApiUser, ApiJob } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
@@ -94,14 +95,14 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         </div>
 
         <div class="actions-card mb">
-          <button class="action-btn">
+          <button class="action-btn" (click)="openAccountSettings()">
             <div class="action-label">
               <div class="action-icon icon-blue-bg"><ion-icon name="settings"></ion-icon></div>
               <span>Account Settings</span>
             </div>
             <ion-icon name="chevron-forward" class="chevron"></ion-icon>
           </button>
-          <button class="action-btn">
+          <button class="action-btn" (click)="openHelpSupport()">
             <div class="action-label">
               <div class="action-icon icon-purple-bg"><ion-icon name="help-circle"></ion-icon></div>
               <span>Help & Support</span>
@@ -253,7 +254,8 @@ export class ProfileClientPage implements OnInit {
     private router: Router,
     private route: ActivatedRoute,
     private roleService: RoleService,
-    private api: ApiService
+    private api: ApiService,
+    private toast: ToastController
   ) { }
 
   ngOnInit() {
@@ -349,5 +351,18 @@ export class ProfileClientPage implements OnInit {
   handleLogout() {
     this.roleService.logout();
     this.router.navigate(['/login']);
+  }
+
+  openAccountSettings() {
+    this.openEdit();
+  }
+
+  async openHelpSupport() {
+    const t = await this.toast.create({
+      message: 'Support is available from the browse screen for now.',
+      duration: 2200,
+      color: 'medium'
+    });
+    t.present();
   }
 }

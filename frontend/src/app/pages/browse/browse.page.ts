@@ -42,9 +42,9 @@ import { RoleService } from '../../services/role.service';
       <!-- Services Tab -->
       <div *ngIf="activeTab === 'Services'">
         <div class="section">
-          <h2 class="section-title">Recommended for you</h2>
-          <div class="horizontal-scroll">
-            <div *ngFor="let item of recommended" class="service-card" (click)="handleInteraction()">
+          <h2 class="section-title">Marketplace Services</h2>
+          <div class="horizontal-scroll" *ngIf="services.length > 0">
+            <div *ngFor="let item of services.slice(0, 5)" class="service-card" (click)="handleInteraction()">
               <div class="image-wrapper">
                 <img [src]="item.image" [alt]="item.title" />
                 <button class="bookmark-btn"><ion-icon name="bookmark-outline"></ion-icon></button>
@@ -56,18 +56,21 @@ import { RoleService } from '../../services/role.service';
                   <span>{{ item.freelancer }}</span>
                 </div>
                 <div class="card-footer">
-                  <div class="rating"><ion-icon name="star"></ion-icon> {{ item.rating }}</div>
+                  <div class="rating"><ion-icon name="star"></ion-icon> {{ item.rating | number:'1.1-1' }}</div>
                   <div class="price">From {{ item.price }}</div>
                 </div>
               </div>
             </div>
           </div>
+          <div *ngIf="services.length === 0 && !loading" class="empty-state-mini">
+            <p>No services available yet</p>
+          </div>
         </div>
 
         <div class="section">
-          <h2 class="section-title">Popular Services</h2>
+          <h2 class="section-title">Top Rated</h2>
           <div class="vertical-list">
-            <div *ngFor="let item of popular" class="popular-card" (click)="handleInteraction()">
+            <div *ngFor="let item of services.slice(5)" class="popular-card" (click)="handleInteraction()">
               <div class="image-wrapper">
                 <img [src]="item.image" [alt]="item.title" />
               </div>
@@ -77,7 +80,7 @@ import { RoleService } from '../../services/role.service';
                   <span class="freelancer-name">{{ item.freelancer }}</span>
                 </div>
                 <div class="card-footer">
-                  <div class="rating"><ion-icon name="star"></ion-icon> {{ item.rating }}</div>
+                  <div class="rating"><ion-icon name="star"></ion-icon> {{ item.rating | number:'1.1-1' }}</div>
                   <div class="price">{{ item.price }}</div>
                 </div>
               </div>
@@ -110,7 +113,10 @@ import { RoleService } from '../../services/role.service';
           <div class="skills">
             <span *ngFor="let skill of f.skills" class="skill-tag">{{ skill }}</span>
           </div>
-          <button class="action-btn" (click)="handleInteraction(); $event.stopPropagation()">View Profile</button>
+          <div class="card-actions">
+            <button class="action-btn outline-btn" (click)="goToMessages(); $event.stopPropagation()">Message</button>
+            <button class="action-btn" (click)="handleInteraction(); $event.stopPropagation()">View Profile</button>
+          </div>
         </div>
       </div>
 
@@ -242,6 +248,8 @@ import { RoleService } from '../../services/role.service';
     .skills.mb { margin-bottom: 12px; }
     .skill-tag { background: #F3E8FF; color: #8B5CF6; font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; border: 1px solid #E9D5FF; }
     .gray-tag { background: #F3F4F6; color: #4B5563; border-color: transparent; }
+
+    .card-actions { display: flex; gap: 8px; margin-top: 12px; }
     
     .action-btn { width: 100%; padding: 8px 0; background: #8B5CF6; color: white; font-size: 12px; font-weight: 700; border-radius: 12px; border: none; margin-top: 12px; transition: background 0.2s; }
     .action-btn:active { transform: scale(0.98); }
@@ -279,23 +287,36 @@ export class BrowsePage implements OnInit {
   tabs = ['Services', 'Freelancers', 'Projects'];
   showLoginPrompt = false;
 
-  recommended = [
-    { id: 1, title: "Modern SaaS Website Design", freelancer: "Alex Chen", avatar: "https://i.pravatar.cc/150?u=alex", rating: 4.9, price: "$250", image: "https://images.unsplash.com/photo-1710799885122-428e63eff691?q=80&w=400" },
-    { id: 2, title: "Mobile App UX Audit", freelancer: "Sarah Miller", avatar: "https://i.pravatar.cc/150?u=sarah", rating: 4.8, price: "$180", image: "https://images.unsplash.com/photo-1554260570-83dc2f46ef79?q=80&w=400" }
-  ];
-
-  popular = [
-    { id: 3, title: "Custom Logo Design & Branding", freelancer: "David Wolf", avatar: "https://i.pravatar.cc/150?u=david", rating: 5.0, price: "$120", image: "https://images.unsplash.com/photo-1713616147761-c126f8009c6f?q=80&w=400" },
-    { id: 4, title: "Python Data Visualization", freelancer: "Emma Watson", avatar: "https://i.pravatar.cc/150?u=emma", rating: 4.7, price: "$300", image: "https://images.unsplash.com/photo-1551288049-bbbda5366fd9?q=80&w=400" }
-  ];
-
+  services: any[] = [];
   freelancers: any[] = [];
   projects: any[] = [];
-  saving = false;
+  loading = false;
 
   constructor(private router: Router, private api: ApiService, public roleService: RoleService) { }
 
   ngOnInit() {
+    this.loadAll();
+  }
+
+  loadAll() {
+    this.loading = true;
+
+    // Load Products (Services)
+    this.api.getProducts().subscribe({
+      next: (data) => {
+        this.services = data.map(p => ({
+          ...p,
+          title: p.name,
+          freelancer: 'Pro Seller', // In real app, join with User
+          avatar: 'https://i.pravatar.cc/150?u=' + p.seller_id,
+          rating: 4.8 + (Math.random() * 0.2), // Simulated rating
+          price: '$' + p.price,
+          image: p.image_url || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400'
+        }));
+      }
+    });
+
+    // Load Freelancers
     this.api.getFreelancers().subscribe({
       next: (data) => {
         this.freelancers = data.map((f: any) => ({
@@ -304,7 +325,7 @@ export class BrowsePage implements OnInit {
           specialty: f.skills ? f.skills.split(',')[0] : 'Freelancer',
           rate: f.hourly_rate ? '$' + f.hourly_rate + '/hr' : 'Negotiable',
           rating: 5.0,
-          reviews: 0,
+          reviews: Math.floor(Math.random() * 10),
           location: 'Remote',
           avatar: 'https://i.pravatar.cc/150?u=' + f.id,
           verified: true,
@@ -313,6 +334,7 @@ export class BrowsePage implements OnInit {
       }
     });
 
+    // Load Projects (Jobs)
     this.api.getJobs().subscribe({
       next: (data) => {
         this.projects = data.map((j: any) => ({
@@ -324,7 +346,9 @@ export class BrowsePage implements OnInit {
           proposals: j.application_count || 0,
           avatar: 'https://i.pravatar.cc/150?u=' + j.client_id
         }));
-      }
+        this.loading = false;
+      },
+      error: () => { this.loading = false; }
     });
   }
 
@@ -339,6 +363,14 @@ export class BrowsePage implements OnInit {
     if (role === 'client') this.router.navigate(['/profile-client']);
     else if (role === 'admin') this.router.navigate(['/profile-admin']);
     else this.router.navigate(['/freelancer-profile']);
+  }
+
+  goToMessages() {
+    if (!this.roleService.isAuthenticated) {
+      this.showLoginPrompt = true;
+      return;
+    }
+    this.router.navigate(['/conversations']);
   }
 
   goToLogin() {

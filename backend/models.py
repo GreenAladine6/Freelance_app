@@ -152,37 +152,8 @@ class Product:
             'image_url': doc.get('image_url'),
             'category': doc.get('category'),
             'seller_id': str(doc.get('seller_id')),
+            'is_approved': doc.get('is_approved', False),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
-        }
-
-class Job:
-    collection = db.jobs
-
-    @staticmethod
-    def get_by_id(job_id):
-        try:
-            return Job.collection.find_one({'_id': ObjectId(job_id)})
-        except:
-            return None
-
-    @staticmethod
-    def to_dict(job_doc):
-        if not job_doc: return None
-        client_id = job_doc.get('client_id')
-        client = User.get_by_id(client_id) if client_id else None
-        return {
-            'id': str(job_doc['_id']),
-            'title': job_doc.get('title'),
-            'description': job_doc.get('description'),
-            'budget': job_doc.get('budget'),
-            'duration': job_doc.get('duration'),
-            'skills_required': job_doc.get('skills_required'),
-            'client_id': str(client_id) if client_id else None,
-            'client_name': (client.get('full_name') or client.get('username')) if client else None,
-            'status': job_doc.get('status', 'open'),
-            'created_at': job_doc.get('created_at').isoformat() if hasattr(job_doc.get('created_at'), 'isoformat') else None,
-            'updated_at': job_doc.get('updated_at').isoformat() if hasattr(job_doc.get('updated_at'), 'isoformat') else None,
-            'application_count': Application.collection.count_documents({'job_id': job_doc['_id']})
         }
 
 class Application:
@@ -209,4 +180,76 @@ class Application:
             'proposed_rate': app_doc.get('proposed_rate'),
             'status': app_doc.get('status', 'pending'),
             'created_at': app_doc.get('created_at').isoformat() if hasattr(app_doc.get('created_at'), 'isoformat') else None
+        }
+
+class Job:
+    collection = db.jobs
+
+    @staticmethod
+    def get_by_id(job_id):
+        try:
+            return Job.collection.find_one({'_id': ObjectId(job_id)})
+        except:
+            return None
+
+    @staticmethod
+    def to_dict(job_doc):
+        if not job_doc: return None
+        client_id = job_doc.get('client_id')
+        client = User.get_by_id(client_id) if client_id else None
+        return {
+            'id': str(job_doc['_id']),
+            'title': job_doc.get('title'),
+            'description': job_doc.get('description'),
+            'budget': job_doc.get('budget'),
+            'duration': job_doc.get('duration'),
+            'skills_required': job_doc.get('skills_required'),
+            'image_url': job_doc.get('image_url'),
+            'client_id': str(client_id) if client_id else None,
+            'client_name': (client.get('full_name') or client.get('username')) if client else None,
+            'status': job_doc.get('status', 'open'),
+            'is_approved': job_doc.get('is_approved', False),
+            'created_at': job_doc.get('created_at').isoformat() if hasattr(job_doc.get('created_at'), 'isoformat') else None,
+            'updated_at': job_doc.get('updated_at').isoformat() if hasattr(job_doc.get('updated_at'), 'isoformat') else None,
+            'application_count': Application.collection.count_documents({'job_id': job_doc['_id']})
+        }
+
+class AdminLog:
+    collection = db.admin_logs
+
+    @staticmethod
+    def create(admin_id, action, details=None):
+        log_doc = {
+            'admin_id': ObjectId(admin_id),
+            'action': action,
+            'details': details,
+            'created_at': datetime.utcnow()
+        }
+        AdminLog.collection.insert_one(log_doc)
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc: return None
+        return {
+            'id': str(doc['_id']),
+            'admin_id': str(doc.get('admin_id')),
+            'action': doc.get('action'),
+            'details': doc.get('details'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+class Report:
+    collection = db.reports
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc: return None
+        return {
+            'id': str(doc['_id']),
+            'reporter_id': str(doc.get('reporter_id')),
+            'reason': doc.get('reason'),
+            'target_type': doc.get('target_type'),
+            'target_id': str(doc.get('target_id')),
+            'status': doc.get('status', 'pending'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }

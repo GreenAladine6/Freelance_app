@@ -5,7 +5,9 @@ from flask_jwt_extended import (
 )
 from datetime import datetime
 from bson.objectid import ObjectId
-from models import User, Job, Application, Conversation, Message, Product
+from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report
+from google.auth.transport import requests
+from google.oauth2 import id_token
 
 api = Blueprint('api', __name__)
 
@@ -83,6 +85,73 @@ def login():
     }), 200
 
 
+@api.route('/login-google', methods=['POST'])
+def login_google():
+    """Login with Google OAuth token."""
+    import os
+    from google.auth.transport import requests
+    from google.oauth2 import id_token
+    
+    data = request.get_json()
+    token = data.get('token')
+    
+    if not token:
+        return jsonify({'error': 'Google token is required'}), 400
+    
+    try:
+        # Verify the token with Google
+        GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com')
+        print(f"[DEBUG] Using Google Client ID: {GOOGLE_CLIENT_ID}")
+        print(f"[DEBUG] Token received: {token[:50]}...")
+        idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
+        
+        # Extract user info from token
+        email = idinfo.get('email')
+        google_id = idinfo.get('sub')
+        full_name = idinfo.get('name', '')
+        picture = idinfo.get('picture', '')
+        
+        if not email:
+            return jsonify({'error': 'Email not found in Google token'}), 400
+        
+        # Check if user exists
+        user_doc = User.get_by_email(email)
+        
+        if user_doc:
+            # User exists, log them in
+            user_id = str(user_doc['_id'])
+        else:
+            # Create new user from Google info
+            # Default to 'freelancer' for new Google users
+            user_doc = User.create(
+                username=email.split('@')[0],  # Use email prefix as username
+                email=email,
+                password=None,  # Google users don't have password
+                user_type='freelancer',
+                full_name=full_name,
+                bio=picture  # Store picture URL temporarily
+            )
+            user_id = str(user_doc['_id'])
+        
+        # Generate JWT tokens
+        access_token = create_access_token(identity=user_id)
+        refresh_token = create_refresh_token(identity=user_id)
+        
+        return jsonify({
+            'message': 'Google login successful',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': User.to_dict(user_doc),
+            'is_new_user': not user_doc or user_doc.get('user_type') is None
+        }), 200
+    
+    except Exception as e:
+        print(f"[ERROR] Google authentication failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Google authentication failed: {str(e)}'}), 401
+
+
 @api.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
@@ -158,7 +227,7 @@ def get_jobs():
     status = request.args.get('status', 'open')
     skills = request.args.get('skills')
     
-    query = {}
+    query = {'is_approved': True}
     if status:
         query['status'] = status
         
@@ -205,8 +274,10 @@ def create_job():
         'budget': data['budget'],
         'duration': data.get('duration'),
         'skills_required': data.get('skills_required'),
+        'image_url': data.get('image_url'),
         'client_id': ObjectId(current_user_id),
         'status': 'open',
+        'is_approved': False,
         'created_at': datetime.utcnow(),
         'updated_at': datetime.utcnow()
     }
@@ -215,7 +286,7 @@ def create_job():
     new_job = Job.get_by_id(res.inserted_id)
     
     return jsonify({
-        'message': 'Job created successfully',
+        'message': 'Job posted successfully and is pending admin approval',
         'job': Job.to_dict(new_job)
     }), 201
 
@@ -267,6 +338,11 @@ def delete_job(job_id):
     
     Job.collection.delete_one({'_id': ObjectId(job_id)})
     Application.collection.delete_many({'job_id': ObjectId(job_id)})
+    
+    # Log the action (if user is admin)
+    user_doc = User.get_by_id(current_user_id)
+    if user_doc and user_doc.get('user_type') == 'admin':
+        AdminLog.create(current_user_id, f"Deleted Job #{job_id}", details=f"Job title: {job_doc.get('title')}")
     
     return jsonify({'message': 'Job deleted successfully'}), 200
 
@@ -475,6 +551,119 @@ def get_admin_stats():
     }), 200
 
 
+@api.route('/admin/logs', methods=['GET'])
+@jwt_required()
+def get_admin_logs():
+    """Get recent admin logs (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    logs_cursor = AdminLog.collection.find().sort('created_at', -1).limit(20)
+    return jsonify([AdminLog.to_dict(log) for log in logs_cursor]), 200
+
+
+@api.route('/admin/reports', methods=['GET'])
+@jwt_required()
+def get_admin_reports():
+    """Get pending reports (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    reports_cursor = Report.collection.find({'status': 'pending'}).sort('created_at', -1)
+    return jsonify([Report.to_dict(report) for report in reports_cursor]), 200
+
+
+@api.route('/admin/reports/<report_id>', methods=['PUT'])
+@jwt_required()
+def update_report_status(report_id):
+    """Update report status (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json()
+    status = data.get('status')
+    if status not in ['resolved', 'dismissed']:
+        return jsonify({'error': 'Invalid status'}), 400
+
+    Report.collection.update_one({'_id': ObjectId(report_id)}, {'$set': {'status': status}})
+    AdminLog.create(current_user_id, f"Report {status}", details=f"Report ID: {report_id}")
+    
+    return jsonify({'message': f'Report {status} successfully'}), 200
+
+
+@api.route('/admin/pending', methods=['GET'])
+@jwt_required()
+def get_pending_content():
+    """Get all unapproved jobs and products (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    pending_jobs = Job.collection.find({'is_approved': False})
+    pending_products = Product.collection.find({'is_approved': False})
+
+    return jsonify({
+        'jobs': [Job.to_dict(j) for j in pending_jobs],
+        'products': [Product.to_dict(p) for p in pending_products]
+    }), 200
+
+
+@api.route('/admin/approve/<content_type>/<content_id>', methods=['PUT'])
+@jwt_required()
+def approve_content(content_type, content_id):
+    """Approve a job or product (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    if content_type == 'job':
+        res = Job.collection.update_one({'_id': ObjectId(content_id)}, {'$set': {'is_approved': True}})
+        action = "Approved Job"
+    elif content_type == 'product':
+        res = Product.collection.update_one({'_id': ObjectId(content_id)}, {'$set': {'is_approved': True}})
+        action = "Approved Product"
+    else:
+        return jsonify({'error': 'Invalid content type'}), 400
+
+    if res.modified_count:
+        AdminLog.create(current_user_id, f"{action} #{content_id}")
+        return jsonify({'message': f'{content_type} approved successfully'}), 200
+    
+    return jsonify({'error': 'Content not found or already approved'}), 404
+
+
+@api.route('/admin/analytics', methods=['GET'])
+@jwt_required()
+def get_admin_analytics():
+    """Get platform analytics data (admin only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    if not user_doc or user_doc.get('user_type') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    # Simple weekly user growth simulation
+    # In a real app, this would be grouped by date from the DB
+    analytics_data = {
+        'user_growth': [10, 25, 40, 65, 90, 120, 150],
+        'job_growth': [5, 12, 20, 35, 50, 75, 100],
+        'revenue_projection': [100, 300, 700, 1500, 2500, 4000, 6000],
+        'top_skills': [
+            {'skill': 'React', 'count': 45},
+            {'skill': 'Python', 'count': 38},
+            {'skill': 'Design', 'count': 32}
+        ]
+    }
+    return jsonify(analytics_data), 200
+
+
 # ==================== Chat Routes ====================
 
 @api.route('/conversations', methods=['GET'])
@@ -558,7 +747,7 @@ def send_message():
 def get_products():
     """Get all store products."""
     category = request.args.get('category')
-    query = {}
+    query = {'is_approved': True}
     if category:
         query['category'] = category
         
@@ -579,11 +768,15 @@ def add_product():
         'image_url': data.get('image_url'),
         'category': data.get('category'),
         'seller_id': ObjectId(current_user_id),
+        'is_approved': False,
         'created_at': datetime.utcnow()
     }
     
     res = Product.collection.insert_one(product_doc)
-    return jsonify(Product.to_dict(Product.collection.find_one({'_id': res.inserted_id}))), 201
+    return jsonify({
+        'message': 'Product added and is pending admin approval',
+        'product': Product.to_dict(Product.collection.find_one({'_id': res.inserted_id}))
+    }), 201
 
 # ==================== Health Check ====================
 

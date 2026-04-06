@@ -15,7 +15,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       <div class="page-wrap">
         <!-- Header -->
         <header class="app-bar">
-          <div class="user-info" (click)="router.navigate(['/profile'])">
+          <div class="user-info" (click)="router.navigate(['/freelancer-profile'])">
             <img src="https://i.pravatar.cc/150?u=me" class="avatar" alt="Profile">
             <div>
               <p class="welcome-text">Welcome back,</p>
@@ -46,7 +46,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
             <button class="chip filled" (click)="router.navigate(['/create-gig'])">Create New Gig</button>
             <button class="chip" (click)="router.navigate(['/browse'])">Browse Projects</button>
             <button class="chip" (click)="router.navigate(['/gigs'])">My Gigs</button>
-            <button class="chip" (click)="router.navigate(['/profile'])">Portfolio</button>
+            <button class="chip" (click)="router.navigate(['/freelancer-profile'])">Portfolio</button>
           </div>
         </section>
 

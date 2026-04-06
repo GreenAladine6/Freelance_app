@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import random
 from bson import ObjectId
 
-from models import User, Job, Application, Conversation
+from models import User, Job, Application, Conversation, AdminLog, Report
 
 print("Seeding FreelanceHub Database...")
 
@@ -12,6 +12,8 @@ print("Seeding FreelanceHub Database...")
 User.collection.delete_many({})
 Job.collection.delete_many({})
 Application.collection.delete_many({})
+AdminLog.collection.delete_many({})
+Report.collection.delete_many({})
 db = User.collection.database
 db.products.delete_many({})
 db.messages.delete_many({})
@@ -48,6 +50,29 @@ for u in users:
     )
     created_users[u['username']] = user_doc['_id']
 
+# Add Jobs
+jobs = [
+    {
+        'title': 'Frontend Developer Needed',
+        'description': 'Looking for a React expert to build a dashboard.',
+        'budget': '500-1000$',
+        'client_id': created_users['techcorp'],
+        'is_approved': True,
+        'status': 'open',
+        'created_at': datetime.utcnow()
+    },
+    {
+        'title': 'Logo Design for Startup',
+        'description': 'Need a modern logo for a new fintech startup.',
+        'budget': '200$',
+        'client_id': created_users['startup'],
+        'is_approved': False,
+        'status': 'open',
+        'created_at': datetime.utcnow()
+    }
+]
+Job.collection.insert_many(jobs)
+
 # Add Education & Experience to Alex
 User.collection.update_one({'_id': created_users['alexc']}, {
     '$set': {
@@ -62,8 +87,8 @@ User.collection.update_one({'_id': created_users['alexc']}, {
 
 # Add Store Products
 products = [
-    {'name': 'Premium Dashboard Kit', 'description': 'Modern UI Kit for SaaS Designers', 'price': 49.99, 'category': 'UI Kits', 'seller_id': created_users['alexc'], 'image_url': 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop'},
-    {'name': 'Icon Collection - 500+', 'description': 'Multi-style icon set for web', 'price': 24.99, 'category': 'Icons', 'seller_id': created_users['sarahm'], 'image_url': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop'}
+    {'name': 'Premium Dashboard Kit', 'description': 'Modern UI Kit for SaaS Designers', 'price': 49.99, 'category': 'UI Kits', 'seller_id': created_users['alexc'], 'is_approved': True, 'image_url': 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop'},
+    {'name': 'Icon Collection - 500+', 'description': 'Multi-style icon set for web', 'price': 24.99, 'category': 'Icons', 'seller_id': created_users['sarahm'], 'is_approved': False, 'image_url': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop'}
 ]
 db.products.insert_many(products)
 
@@ -76,4 +101,16 @@ msgs = [
 db.messages.insert_many(msgs)
 db.conversations.update_one({'_id': conv['_id']}, {'$set': {'last_message_at': datetime.utcnow()}})
 
-print("Database successfully seeded with Chat, Store, and CV data!")
+# Add AdminLogs & Reports
+print("Seeding Admin data...")
+AdminLog.create(created_users['admin'], "Platform Initialization", details="Database seeded for initial launch")
+AdminLog.create(created_users['admin'], "Approved verified freelancer: Alex Chen")
+AdminLog.create(created_users['admin'], "Settings Update", details="Platform fees updated to 5%")
+
+reports = [
+    {'reporter_id': created_users['sarahm'], 'reason': 'Spam messaging', 'target_type': 'user', 'target_id': created_users['davidw'], 'status': 'pending', 'created_at': datetime.utcnow() - timedelta(days=1)},
+    {'reporter_id': created_users['alexc'], 'reason': 'Inappropriate content in Gig description', 'target_type': 'gig', 'target_id': ObjectId(), 'status': 'pending', 'created_at': datetime.utcnow()}
+]
+Report.collection.insert_many(reports)
+
+print("Database successfully seeded with Chat, Store, CV and Admin data!")

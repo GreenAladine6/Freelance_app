@@ -25,6 +25,18 @@ export interface LoginResponse {
     user: ApiUser;
 }
 
+export interface GoogleLoginPayload {
+    token: string;
+}
+
+export interface GoogleLoginResponse {
+    message: string;
+    access_token: string;
+    refresh_token: string;
+    user: ApiUser;
+    is_new_user?: boolean;
+}
+
 export interface RegisterPayload {
     username: string;
     email: string;
@@ -55,6 +67,7 @@ export interface CreateJobPayload {
     budget: number;
     duration?: string;
     skills_required?: string;
+    image_url?: string;
 }
 
 export interface ApiApplication {
@@ -114,6 +127,10 @@ export class ApiService {
     // ── Auth ──────────────────────────────────────────────
     login(email: string, password: string): Observable<LoginResponse> {
         return this.http.post<LoginResponse>(`${this.baseUrl}/login`, { email, password });
+    }
+
+    loginWithGoogle(token: string): Observable<GoogleLoginResponse> {
+        return this.http.post<GoogleLoginResponse>(`${this.baseUrl}/login-google`, { token });
     }
 
     register(payload: RegisterPayload): Observable<{ message: string; user: ApiUser }> {
@@ -198,6 +215,30 @@ export class ApiService {
     // ── Admin ─────────────────────────────────────────────
     getAdminStats(): Observable<AdminStats> {
         return this.http.get<AdminStats>(`${this.baseUrl}/admin/stats`);
+    }
+
+    getAdminLogs(): Observable<any[]> {
+        return this.http.get<any[]>(`${this.baseUrl}/admin/logs`);
+    }
+
+    getAdminReports(): Observable<any[]> {
+        return this.http.get<any[]>(`${this.baseUrl}/admin/reports`);
+    }
+
+    updateReportStatus(reportId: string, status: 'resolved' | 'dismissed'): Observable<any> {
+        return this.http.put<any>(`${this.baseUrl}/admin/reports/${reportId}`, { status });
+    }
+
+    getPendingContent(): Observable<{ jobs: any[], products: any[] }> {
+        return this.http.get<{ jobs: any[], products: any[] }>(`${this.baseUrl}/admin/pending`);
+    }
+
+    approveContent(type: 'job' | 'product', id: string): Observable<any> {
+        return this.http.put<any>(`${this.baseUrl}/admin/approve/${type}/${id}`, {});
+    }
+
+    getAnalytics(): Observable<any> {
+        return this.http.get<any>(`${this.baseUrl}/admin/analytics`);
     }
 
     // ── Chat ──────────────────────────────────────────────

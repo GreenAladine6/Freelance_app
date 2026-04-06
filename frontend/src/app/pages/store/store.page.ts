@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { Router } from '@angular/router';
 import { ApiService, ApiProduct } from '../../services/api.service';
+import { ToastController } from '@ionic/angular';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
 
 @Component({
@@ -55,7 +56,9 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
                 <span class="current-price">\${{ item.price }}</span>
               </div>
               
-              <button class="add-cart-btn" (click)="addToCart()">Add to Cart</button>
+              <button class="add-cart-btn" (click)="addToCart(item)">
+                {{ isInCart(item) ? 'In Cart' : 'Add to Cart' }}
+              </button>
             </div>
           </div>
         </div>
@@ -103,19 +106,21 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
 export class StorePage implements OnInit {
   searchQuery = "";
   selectedCategory = "All";
-  cartCount = 0;
   loading = false;
   products: ApiProduct[] = [];
   categories = ["All", "Templates", "Graphics", "UI Kits", "Icons"];
+  cartItems: ApiProduct[] = [];
+  cartCount = 0;
+
+  private readonly cartStorageKey = 'fh_store_cart';
 
   mockItems: any[] = [
-    { id: "m1", name: "Premium Resume Template", description: "Professional resume template", price: 19.99, image: "https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=400&h=300&fit=crop", category: "Templates" },
-    { id: "m2", name: "Social Media Graphics Pack", description: "100+ customizable templates", price: 29.99, image: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=300&fit=crop", category: "Graphics" }
   ];
 
-  constructor(private api: ApiService) { }
+  constructor(private api: ApiService, private toast: ToastController) { }
 
   ngOnInit() {
+    this.loadCart();
     this.loadProducts();
   }
 
@@ -135,7 +140,41 @@ export class StorePage implements OnInit {
     this.loadProducts();
   }
 
-  addToCart() {
-    this.cartCount++;
+  isInCart(item: any): boolean {
+    return this.cartItems.some(cartItem => cartItem.id === item.id);
+  }
+
+  async addToCart(item: any) {
+    if (this.isInCart(item)) {
+      const existingToast = await this.toast.create({
+        message: 'This item is already in your cart',
+        duration: 1800,
+        color: 'medium'
+      });
+      existingToast.present();
+      return;
+    }
+
+    this.cartItems = [...this.cartItems, item];
+    this.cartCount = this.cartItems.length;
+    localStorage.setItem(this.cartStorageKey, JSON.stringify(this.cartItems));
+
+    const t = await this.toast.create({
+      message: 'Added to cart',
+      duration: 1800,
+      color: 'success'
+    });
+    t.present();
+  }
+
+  loadCart() {
+    try {
+      const raw = localStorage.getItem(this.cartStorageKey);
+      this.cartItems = raw ? JSON.parse(raw) : [];
+      this.cartCount = this.cartItems.length;
+    } catch {
+      this.cartItems = [];
+      this.cartCount = 0;
+    }
   }
 }

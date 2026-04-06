@@ -1,16 +1,17 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { Router } from '@angular/router';
 import { ApiService, ApiJob } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
+import { ToastController } from '@ionic/angular';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
 
 @Component({
   selector: 'app-gigs-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, IonicModule, BottomNavComponent],
+  imports: [CommonModule, NgIf, NgFor, FormsModule, IonicModule, BottomNavComponent],
   template: `
     <ion-header class="ion-no-border">
       <ion-toolbar>
@@ -99,7 +100,19 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
        </div>
        <div class="modal-body">
          <p class="desc">{{ selectedJob.description }}</p>
-         <button class="apply-btn">Apply for this Job</button>
+         <div *ngIf="!isClient()" class="apply-form">
+           <label>Cover Letter</label>
+           <textarea [(ngModel)]="applyCoverLetter" rows="4" placeholder="Tell the client why you're the right fit"></textarea>
+           <label>Proposed Rate (optional)</label>
+           <input type="number" [(ngModel)]="applyRate" placeholder="0" />
+           <p class="apply-error" *ngIf="applyError">{{ applyError }}</p>
+           <button class="apply-btn" [disabled]="applying" (click)="submitApplication()">
+             {{ applying ? 'Submitting...' : 'Apply for this Job' }}
+           </button>
+         </div>
+         <div *ngIf="isClient()" class="client-note">
+           Clients can post jobs from the create button below.
+         </div>
        </div>
     </div>
   `,
@@ -159,6 +172,14 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .modal-header p { font-size: 12px; color: #6B7280; margin: 4px 0 0; }
     .desc { font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 24px; }
     .apply-btn { width: 100%; padding: 14px; background: #8B5CF6; color: white; border-radius: 9999px; font-size: 14px; font-weight: 700; border: none; }
+    .apply-form { display: flex; flex-direction: column; gap: 10px; }
+    .apply-form label { font-size: 12px; font-weight: 700; color: #374151; }
+    .apply-form textarea, .apply-form input {
+      width: 100%; border: 1px solid #E5E7EB; border-radius: 12px; padding: 12px;
+      font-size: 14px; outline: none; resize: none;
+    }
+    .apply-error { margin: 0; color: #DC2626; font-size: 12px; font-weight: 600; }
+    .client-note { padding: 12px 0 4px; color: #6B7280; font-size: 13px; }
   `]
 })
 export class GigsListPage implements OnInit {
@@ -170,10 +191,19 @@ export class GigsListPage implements OnInit {
   loading = false;
   error: string | null = null;
   selectedJob: ApiJob | null = null;
+  applying = false;
+  applyCoverLetter = '';
+  applyRate = '';
+  applyError: string | null = null;
 
   mockJobs: ApiJob[] = [];
 
-  constructor(private router: Router, private roleService: RoleService, private api: ApiService) { }
+  constructor(
+    private router: Router,
+    private roleService: RoleService,
+    private api: ApiService,
+    private toast: ToastController
+  ) { }
 
   ngOnInit() {
     this.roleService.user$.subscribe(user => {
@@ -198,12 +228,22 @@ export class GigsListPage implements OnInit {
 
   openJobModal(job: ApiJob) {
     this.selectedJob = job;
+    this.applyCoverLetter = '';
+    this.applyRate = '';
+    this.applyError = null;
   }
 
   async loadJobs() {
     try {
       this.loading = true;
-      const data = this.isClient() ? await this.api.getMyJobs().toPromise() : await this.api.getJobs().toPromise();
+      this.error = null;
+      let obs;
+      if (this.activeTab === 'mine') {
+        obs = this.api.getMyJobs();
+      } else {
+        obs = this.api.getJobs();
+      }
+      const data = await obs.toPromise();
       this.jobs = data || [];
     } catch {
       this.error = 'Failed to load jobs';
@@ -220,5 +260,53 @@ export class GigsListPage implements OnInit {
       (job.description?.toLowerCase() || '').includes(term) ||
       (job.skills_required?.toLowerCase() || '').includes(term)
     );
+  }
+
+  async submitApplication() {
+    if (!this.selectedJob) return;
+    if (this.isClient()) {
+      this.applyError = 'Clients cannot apply to jobs.';
+      return;
+    }
+
+    if (!this.applyCoverLetter.trim()) {
+      this.applyError = 'Please add a cover letter.';
+      return;
+    }
+
+    this.applying = true;
+    this.applyError = null;
+
+    const payload: { cover_letter: string; proposed_rate?: number } = {
+      cover_letter: this.applyCoverLetter.trim()
+    };
+    const rate = parseFloat(this.applyRate);
+    if (!isNaN(rate) && rate > 0) {
+      payload.proposed_rate = rate;
+    }
+
+    this.api.applyForJob(this.selectedJob.id, payload).subscribe({
+      next: async () => {
+        this.applying = false;
+        this.selectedJob = null;
+        const t = await this.toast.create({
+          message: 'Application submitted successfully',
+          duration: 2200,
+          color: 'success'
+        });
+        t.present();
+      },
+      error: async (err) => {
+        this.applying = false;
+        const message = err.error?.error || 'Failed to submit application';
+        this.applyError = message;
+        const t = await this.toast.create({
+          message,
+          duration: 2600,
+          color: 'danger'
+        });
+        t.present();
+      }
+    });
   }
 }

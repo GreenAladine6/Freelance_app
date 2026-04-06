@@ -174,12 +174,9 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
 export class DashboardClientPage implements OnInit {
   freelancers: ApiUser[] = [];
   myJobs: ApiJob[] = [];
+  services: any[] = [];
   loading = false;
   categories = CATEGORIES;
-  services = [
-    { title: 'SaaS Design', price: 'from $200', img: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=300' },
-    { title: 'React Mobile App', price: 'from $800', img: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=300' },
-  ];
 
   get firstName() { return this.roleService.userName.split(' ')[0]; }
   get stats() {
@@ -193,10 +190,21 @@ export class DashboardClientPage implements OnInit {
   constructor(public router: Router, public roleService: RoleService, private api: ApiService) { }
 
   ngOnInit() {
+    this.loadData();
+  }
+
+  loadData() {
     this.loading = true;
     Promise.all([
       this.api.getFreelancers().toPromise().then(fl => { this.freelancers = (fl || []).slice(0, 5); }).catch(() => { }),
-      this.api.getMyJobs().toPromise().then(jobs => { this.myJobs = jobs || []; }).catch(() => { })
+      this.api.getMyJobs().toPromise().then(jobs => { this.myJobs = jobs || []; }).catch(() => { }),
+      this.api.getProducts().toPromise().then(prods => {
+        this.services = (prods || []).slice(0, 4).map(p => ({
+          title: p.name,
+          price: 'from $' + p.price,
+          img: p.image_url || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=300'
+        }));
+      }).catch(() => { })
     ]).finally(() => { this.loading = false; });
   }
 }

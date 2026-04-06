@@ -23,10 +23,10 @@ interface NavItem {
       <button 
         *ngFor="let item of navItems" 
         class="nav-tab" 
-        [class.active]="currentPath.startsWith(item.path)"
-        (click)="router.navigate([item.path])">
+        [class.active]="isActive(item)"
+        (click)="navigate(item)">
         <div class="icon-wrap">
-          <ion-icon [name]="currentPath.startsWith(item.path) ? item.activeIcon : item.icon"></ion-icon>
+          <ion-icon [name]="isActive(item) ? item.activeIcon : item.icon"></ion-icon>
           <div *ngIf="item.badge" class="badge"></div>
         </div>
         <span class="label">{{item.label}}</span>
@@ -38,7 +38,7 @@ interface NavItem {
       position: fixed; bottom: 0; left: 0; right: 0;
       height: 64px; background: white; border-top: 1px solid #E5E7EB;
       display: flex; justify-content: space-around; padding: 0 8px;
-      padding-bottom: env(safe-area-inset-bottom); z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom); z-index: 100;
       box-shadow: 0 -4px 12px rgba(0,0,0,0.03);
     }
     .nav-tab {
@@ -60,14 +60,48 @@ interface NavItem {
 export class BottomNavComponent implements OnInit {
   navItems: NavItem[] = [];
   currentPath = '';
+  queryParams: any = {};
 
   constructor(public router: Router, private roleService: RoleService) {
-    this.currentPath = this.router.url;
+    this.currentPath = this.router.url.split('?')[0];
+    this.queryParams = this.getQueryParams(this.router.url);
+
     this.router.events.pipe(
       filter(event => event instanceof NavigationEnd)
     ).subscribe((event: any) => {
-      this.currentPath = event.urlAfterRedirects;
+      this.currentPath = event.urlAfterRedirects.split('?')[0];
+      this.queryParams = this.getQueryParams(event.urlAfterRedirects);
     });
+  }
+
+  getQueryParams(url: string) {
+    const params: any = {};
+    const parts = url.split('?');
+    if (parts.length > 1) {
+      const q = parts[1].split('&');
+      q.forEach(pair => {
+        const [k, v] = pair.split('=');
+        params[k] = v;
+      });
+    }
+    return params;
+  }
+
+  isActive(item: NavItem) {
+    const isPathMatch = this.currentPath.startsWith(item.path);
+    if (this.roleService.role === 'admin' && item.path === '/dashboard-admin') {
+      const segment = this.queryParams['seg'] || 'overview';
+      return isPathMatch && segment === item.tab;
+    }
+    return isPathMatch;
+  }
+
+  navigate(item: NavItem) {
+    if (this.roleService.role === 'admin' && item.path === '/dashboard-admin') {
+      this.router.navigate([item.path], { queryParams: { seg: item.tab } });
+    } else {
+      this.router.navigate([item.path]);
+    }
   }
 
   ngOnInit() {
@@ -76,13 +110,12 @@ export class BottomNavComponent implements OnInit {
       this.navItems = [
         { icon: 'home-outline', activeIcon: 'home', label: 'Home', path: '/dashboard-client', tab: 'home' },
         { icon: 'search-outline', activeIcon: 'search', label: 'Browse', path: '/browse', tab: 'browse' },
-        { icon: 'folder-outline', activeIcon: 'folder', label: 'My Jobs', path: '/gigs', tab: 'projects' },
-        { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', label: 'Messages', path: '/conversations', tab: 'messages', badge: true },
+        { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', label: 'Messages', path: '/conversations', tab: 'messages', badge: false },
         { icon: 'person-outline', activeIcon: 'person', label: 'Profile', path: '/profile-client', tab: 'profile' },
       ];
     } else if (role === 'admin') {
       this.navItems = [
-        { icon: 'home-outline', activeIcon: 'home', label: 'Dashboard', path: '/dashboard-admin', tab: 'dashboard' },
+        { icon: 'home-outline', activeIcon: 'home', label: 'Overview', path: '/dashboard-admin', tab: 'overview' },
         { icon: 'shield-outline', activeIcon: 'shield', label: 'Moderate', path: '/dashboard-admin', tab: 'moderation', badge: true },
         { icon: 'pie-chart-outline', activeIcon: 'pie-chart', label: 'Analytics', path: '/dashboard-admin', tab: 'analytics' },
         { icon: 'settings-outline', activeIcon: 'settings', label: 'Settings', path: '/profile-admin', tab: 'settings' },
@@ -90,9 +123,9 @@ export class BottomNavComponent implements OnInit {
     } else { // freelancer
       this.navItems = [
         { icon: 'home-outline', activeIcon: 'home', label: 'Home', path: '/dashboard', tab: 'home' },
-        { icon: 'briefcase-outline', activeIcon: 'briefcase', label: 'My Gigs', path: '/gigs', tab: 'gigs' },
-        { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', label: 'Messages', path: '/conversations', tab: 'messages', badge: true },
-        { icon: 'storefront-outline', activeIcon: 'storefront', label: 'Store', path: '/store', tab: 'store' },
+        { icon: 'briefcase-outline', activeIcon: 'briefcase', label: 'Gigs', path: '/gigs', tab: 'gigs' },
+        { icon: 'add-circle-outline', activeIcon: 'add-circle', label: 'Create', path: '/create-gig', tab: 'create' },
+        { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', label: 'Chat', path: '/conversations', tab: 'chat', badge: false },
         { icon: 'person-outline', activeIcon: 'person', label: 'Profile', path: '/freelancer-profile', tab: 'profile' },
       ];
     }

@@ -62,21 +62,21 @@ import { startWith, switchMap } from 'rxjs/operators';
     .user-info { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 4px 8px; border-radius: 8px; transition: background 0.2s; }
     .user-info:active { background: #f0f0f0; }
     .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
-    .user-name { font-size: 14px; font-weight: 700; margin: 0; color: #111827; }
+    .user-name { font-size: 14px; font-weight: 700; margin: 0; color: #5c8cf4ff; }
     .user-status { font-size: 10px; color: #16a34a; margin: 0; }
-    .chat-content { --background: #F8F9FA; }
+    .chat-content { --background: #d0d0e5ff; }
     .message-list { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
     .message-wrapper { display: flex; flex-direction: column; max-width: 80%; }
     .message-wrapper.sent { align-self: flex-end; align-items: flex-end; }
     .message-wrapper.received { align-self: flex-start; align-items: flex-start; }
     .message-bubble { padding: 10px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; }
-    .sent-bubble { background: #8B5CF6; color: white; border-bottom-right-radius: 4px; }
-    .received-bubble { background: white; color: #1F2937; border-bottom-left-radius: 4px; border: 1px solid #E5E7EB; }
+    .sent-bubble { background: #775af5ff; color: white; border-bottom-right-radius: 4px; }
+    .received-bubble { background: white; color: #5f97e4ff; border-bottom-left-radius: 4px; border: 1px solid #E5E7EB; }
     .message-meta { margin-top: 4px; }
     .time { font-size: 9px; color: #9CA3AF; }
-    .chat-footer { background: white; border-top: 1px solid #E5E7EB; padding: 8px 16px; }
-    .input-container { display: flex; align-items: flex-end; gap: 12px; }
-    .textarea-wrapper { flex: 1; background: #F9FAFB; border: 1.5px solid #E5E7EB; border-radius: 20px; padding: 8px 16px; }
+    .chat-footer { background: white; border-top: 1px solid #f1eeeeff; padding: 8px 16px; }
+    .input-container { display: flex;color:white; align-items: flex-end; gap: 12px; }
+    .textarea-wrapper { flex: 1; background: #e2dedeff; border: 1.5px solid #bcb1b1ff; border-radius: 20px; padding: 8px 16px; }
     textarea { width: 100%; background: transparent; border: none; outline: none; resize: none; font-size: 14px; }
     .send-btn { --padding-start: 8px; --padding-end: 8px; height: 36px; }
   `]
@@ -164,10 +164,7 @@ export class ChatPage implements OnInit, OnDestroy {
     if (type === 'freelancer') {
       this.router.navigate(['/freelancer-profile', this.otherUser.id]);
     } else {
-      // For clients, we could show a client profile page if it exists
       this.router.navigate(['/profile-client', this.otherUser.id]);
-      // Wait, profile-client currently doesn't take an ID in routing?
-      // I'll check routing again.
     }
   }
 }
