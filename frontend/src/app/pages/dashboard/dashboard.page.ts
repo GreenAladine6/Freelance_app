@@ -16,7 +16,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         <!-- Header -->
         <header class="app-bar">
           <div class="user-info" (click)="router.navigate(['/freelancer-profile'])">
-            <img src="https://i.pravatar.cc/150?u=me" class="avatar" alt="Profile">
+            <img [src]="currentAvatar" class="avatar" alt="Profile">
             <div>
               <p class="welcome-text">Welcome back,</p>
               <h2 class="user-name">{{roleService.userName}}</h2>
@@ -145,6 +145,10 @@ export class DashboardPage implements OnInit {
     applications: ApiApplication[] = [];
     loading = false;
     apps: any[] = [];
+
+  get currentAvatar() {
+      return this.roleService.user?.avatar_url || this.api.defaultAvatarUrl;
+  }
 
     get stats() {
         const apps = this.applications;

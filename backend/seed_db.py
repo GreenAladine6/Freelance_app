@@ -18,6 +18,7 @@ db = User.collection.database
 db.products.delete_many({})
 db.messages.delete_many({})
 db.conversations.delete_many({})
+db.profile_update_logs.delete_many({})
 print("Cleared existing collections.")
 
 # Add users
@@ -86,10 +87,32 @@ User.collection.update_one({'_id': created_users['alexc']}, {
 })
 
 # Add Store Products
-products = [
-    {'name': 'Premium Dashboard Kit', 'description': 'Modern UI Kit for SaaS Designers', 'price': 49.99, 'category': 'UI Kits', 'seller_id': created_users['alexc'], 'is_approved': True, 'image_url': 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop'},
-    {'name': 'Icon Collection - 500+', 'description': 'Multi-style icon set for web', 'price': 24.99, 'category': 'Icons', 'seller_id': created_users['sarahm'], 'is_approved': False, 'image_url': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop'}
+product_templates = [
+    ('Premium Dashboard Kit', 'Modern UI Kit for SaaS Designers', 'UI Kits', 49.99, 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop'),
+    ('Icon Collection', 'Multi-style icon set for web', 'Icons', 24.99, 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop'),
+    ('Landing Page Pack', 'High-converting landing page templates', 'Templates', 39.99, 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop'),
+    ('Social Media Kit', 'Editable social banners and posts', 'Graphics', 19.99, 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=300&fit=crop'),
+    ('Wireframe Bundle', 'Low-fidelity app wireframes', 'UI Kits', 29.99, 'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?w=400&h=300&fit=crop'),
+    ('Brand Identity Pack', 'Logo, palette, and brand guide assets', 'Graphics', 59.99, 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=400&h=300&fit=crop'),
+    ('App Icon Set', 'Rounded icons for mobile apps', 'Icons', 17.99, 'https://images.unsplash.com/photo-1558655146-d09347e92766?w=400&h=300&fit=crop'),
+    ('Portfolio Template', 'Elegant portfolio layout for creatives', 'Templates', 34.99, 'https://images.unsplash.com/photo-1513258496099-48168024aec0?w=400&h=300&fit=crop')
 ]
+
+seller_ids = [created_users['alexc'], created_users['sarahm'], created_users['davidw']]
+products = []
+for index in range(50):
+    name, description, category, price, image_url = random.choice(product_templates)
+    products.append({
+        'name': f'{name} {index + 1}',
+        'description': description,
+        'price': round(price + random.uniform(-5, 12), 2),
+        'category': category,
+        'seller_id': random.choice(seller_ids),
+        'is_approved': True,
+        'image_url': image_url,
+        'created_at': datetime.utcnow() - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
+    })
+
 db.products.insert_many(products)
 
 # Create a conversation

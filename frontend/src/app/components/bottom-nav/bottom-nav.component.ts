@@ -1,8 +1,10 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import { IonicModule } from '@ionic/angular';
 import { RoleService } from '../../services/role.service';
+import { ApiService } from '../../services/api.service';
+import { interval, Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
 interface NavItem {
@@ -57,12 +59,14 @@ interface NavItem {
     .label { font-size: 10px; font-weight: 600; letter-spacing: 0.3px; }
   `]
 })
-export class BottomNavComponent implements OnInit {
+export class BottomNavComponent implements OnInit, OnDestroy {
   navItems: NavItem[] = [];
   currentPath = '';
   queryParams: any = {};
+  private unreadPollSub?: Subscription;
+  private hasUnreadMessages = false;
 
-  constructor(public router: Router, private roleService: RoleService) {
+  constructor(public router: Router, private roleService: RoleService, private api: ApiService) {
     this.currentPath = this.router.url.split('?')[0];
     this.queryParams = this.getQueryParams(this.router.url);
 
@@ -110,6 +114,7 @@ export class BottomNavComponent implements OnInit {
       this.navItems = [
         { icon: 'home-outline', activeIcon: 'home', label: 'Home', path: '/dashboard-client', tab: 'home' },
         { icon: 'search-outline', activeIcon: 'search', label: 'Browse', path: '/browse', tab: 'browse' },
+        { icon: 'storefront-outline', activeIcon: 'storefront', label: 'Store', path: '/store', tab: 'store' },
         { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', label: 'Messages', path: '/conversations', tab: 'messages', badge: false },
         { icon: 'person-outline', activeIcon: 'person', label: 'Profile', path: '/profile-client', tab: 'profile' },
       ];
@@ -124,10 +129,55 @@ export class BottomNavComponent implements OnInit {
       this.navItems = [
         { icon: 'home-outline', activeIcon: 'home', label: 'Home', path: '/dashboard', tab: 'home' },
         { icon: 'briefcase-outline', activeIcon: 'briefcase', label: 'Gigs', path: '/gigs', tab: 'gigs' },
+        { icon: 'storefront-outline', activeIcon: 'storefront', label: 'Store', path: '/store', tab: 'store' },
         { icon: 'add-circle-outline', activeIcon: 'add-circle', label: 'Create', path: '/create-gig', tab: 'create' },
         { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', label: 'Chat', path: '/conversations', tab: 'chat', badge: false },
         { icon: 'person-outline', activeIcon: 'person', label: 'Profile', path: '/freelancer-profile', tab: 'profile' },
       ];
     }
+
+    this.startUnreadPolling();
+  }
+
+  ngOnDestroy() {
+    this.unreadPollSub?.unsubscribe();
+  }
+
+  private startUnreadPolling() {
+    if (!this.roleService.isAuthenticated) {
+      return;
+    }
+
+    this.refreshUnreadBadge();
+    this.unreadPollSub = interval(5000).subscribe(() => this.refreshUnreadBadge());
+  }
+
+  private refreshUnreadBadge() {
+    const currentUserId = this.roleService.user?.id;
+    if (!currentUserId) {
+      this.hasUnreadMessages = false;
+      this.applyUnreadBadge();
+      return;
+    }
+
+    this.api.getConversations().subscribe({
+      next: (conversations) => {
+        this.hasUnreadMessages = conversations.some(conv => (conv.unread_count || 0) > 0);
+        this.applyUnreadBadge();
+      },
+      error: () => {
+        this.hasUnreadMessages = false;
+        this.applyUnreadBadge();
+      }
+    });
+  }
+
+  private applyUnreadBadge() {
+    this.navItems = this.navItems.map(item => {
+      if (item.tab !== 'messages' && item.tab !== 'chat') {
+        return item;
+      }
+      return { ...item, badge: this.hasUnreadMessages };
+    });
   }
 }

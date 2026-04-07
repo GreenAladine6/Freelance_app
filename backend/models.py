@@ -19,8 +19,21 @@ class User:
     collection = db.users
 
     @staticmethod
-    def create(username, email, password, user_type, full_name=None, bio=None, skills=None, hourly_rate=None):
-        password_hash = generate_password_hash(password)
+    def create(
+        username,
+        email,
+        password,
+        user_type,
+        full_name=None,
+        bio=None,
+        skills=None,
+        hourly_rate=None,
+        avatar_url=None,
+        education=None,
+        experience=None,
+        portfolio=None,
+    ):
+        password_hash = generate_password_hash(password) if password else None
         user_doc = {
             'username': username,
             'email': email,
@@ -30,9 +43,10 @@ class User:
             'bio': bio,
             'skills': skills,
             'hourly_rate': hourly_rate,
-            'education': [],
-            'experience': [],
-            'portfolio': [],
+            'avatar_url': avatar_url,
+            'education': education or [],
+            'experience': experience or [],
+            'portfolio': portfolio or [],
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -56,6 +70,8 @@ class User:
 
     @staticmethod
     def check_password(user_doc, password):
+        if not user_doc.get('password_hash'):
+            return False
         return check_password_hash(user_doc['password_hash'], password)
 
     @staticmethod
@@ -76,6 +92,7 @@ class User:
             'bio': user_doc.get('bio'),
             'skills': user_doc.get('skills'),
             'hourly_rate': user_doc.get('hourly_rate'),
+            'avatar_url': user_doc.get('avatar_url'),
             'education': user_doc.get('education', []),
             'experience': user_doc.get('experience', []),
             'portfolio': user_doc.get('portfolio', []),
@@ -116,11 +133,20 @@ class Conversation:
             sort=[('created_at', -1)]
         )
 
+        unread_count = 0
+        if current_user_id:
+            unread_count = Message.collection.count_documents({
+                'conversation_id': doc['_id'],
+                'sender_id': {'$ne': ObjectId(str(current_user_id))},
+                'is_read': False
+            })
+
         return {
             'id': str(doc['_id']),
             'last_message_at': doc.get('last_message_at').isoformat() if hasattr(doc.get('last_message_at'), 'isoformat') else None,
             'other_user': User.to_dict(other_user) if other_user else None,
-            'last_message': Message.to_dict(last_msg) if last_msg else None
+            'last_message': Message.to_dict(last_msg) if last_msg else None,
+            'unread_count': unread_count
         }
 
 class Message:
@@ -144,6 +170,8 @@ class Product:
     @staticmethod
     def to_dict(doc):
         if not doc: return None
+        seller_id = doc.get('seller_id')
+        seller = User.get_by_id(seller_id) if seller_id else None
         return {
             'id': str(doc['_id']),
             'name': doc.get('name'),
@@ -151,7 +179,8 @@ class Product:
             'price': doc.get('price'),
             'image_url': doc.get('image_url'),
             'category': doc.get('category'),
-            'seller_id': str(doc.get('seller_id')),
+            'seller_id': str(seller_id),
+            'seller_avatar_url': seller.get('avatar_url') if seller else None,
             'is_approved': doc.get('is_approved', False),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }
@@ -207,6 +236,7 @@ class Job:
             'image_url': job_doc.get('image_url'),
             'client_id': str(client_id) if client_id else None,
             'client_name': (client.get('full_name') or client.get('username')) if client else None,
+            'client_avatar_url': client.get('avatar_url') if client else None,
             'status': job_doc.get('status', 'open'),
             'is_approved': job_doc.get('is_approved', False),
             'created_at': job_doc.get('created_at').isoformat() if hasattr(job_doc.get('created_at'), 'isoformat') else None,
@@ -251,5 +281,29 @@ class Report:
             'target_type': doc.get('target_type'),
             'target_id': str(doc.get('target_id')),
             'status': doc.get('status', 'pending'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+
+class ProfileUpdateLog:
+    collection = db.profile_update_logs
+
+    @staticmethod
+    def create(user_id, changed_fields):
+        log_doc = {
+            'user_id': ObjectId(user_id),
+            'changed_fields': changed_fields,
+            'created_at': datetime.utcnow()
+        }
+        ProfileUpdateLog.collection.insert_one(log_doc)
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        return {
+            'id': str(doc.get('_id')),
+            'user_id': str(doc.get('user_id')) if doc.get('user_id') else None,
+            'changed_fields': doc.get('changed_fields', []),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }

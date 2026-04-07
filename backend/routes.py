@@ -1,15 +1,39 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity
 )
 from datetime import datetime
+import os
+import uuid
 from bson.objectid import ObjectId
-from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report
+from werkzeug.utils import secure_filename
+from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
 api = Blueprint('api', __name__)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROFILE_UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads', 'profile_images')
+ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+DEFAULT_PROFILE_AVATAR = 'default.avif'
+
+
+def _is_allowed_image(filename):
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_IMAGE_EXTENSIONS
+
+
+def _default_avatar_url():
+    return f"{request.host_url.rstrip('/')}/api/uploads/profile-images/{DEFAULT_PROFILE_AVATAR}"
+
+
+def _user_response(user_doc):
+    payload = User.to_dict(user_doc)
+    if payload and not payload.get('avatar_url'):
+        payload['avatar_url'] = _default_avatar_url()
+    return payload
 
 # ==================== Authentication Routes ====================
 
@@ -46,12 +70,16 @@ def register():
         full_name=data.get('full_name'),
         bio=data.get('bio'),
         skills=data.get('skills'),
-        hourly_rate=data.get('hourly_rate')
+        hourly_rate=data.get('hourly_rate'),
+        avatar_url=data.get('avatar_url') or _default_avatar_url(),
+        education=data.get('education'),
+        experience=data.get('experience'),
+        portfolio=data.get('portfolio')
     )
     
     return jsonify({
         'message': 'User registered successfully',
-        'user': User.to_dict(user_doc)
+        'user': _user_response(user_doc)
     }), 201
 
 
@@ -129,7 +157,7 @@ def login_google():
                 password=None,  # Google users don't have password
                 user_type='freelancer',
                 full_name=full_name,
-                bio=picture  # Store picture URL temporarily
+                avatar_url=picture or _default_avatar_url()
             )
             user_id = str(user_doc['_id'])
         
@@ -141,7 +169,7 @@ def login_google():
             'message': 'Google login successful',
             'access_token': access_token,
             'refresh_token': refresh_token,
-            'user': User.to_dict(user_doc),
+            'user': _user_response(user_doc),
             'is_new_user': not user_doc or user_doc.get('user_type') is None
         }), 200
     
@@ -174,7 +202,7 @@ def get_current_user():
     if not user_doc:
         return jsonify({'error': 'User not found'}), 404
     
-    return jsonify(User.to_dict(user_doc)), 200
+    return jsonify(_user_response(user_doc)), 200
 
 
 @api.route('/me', methods=['PUT'])
@@ -198,6 +226,8 @@ def update_current_user():
         update_data['skills'] = data['skills']
     if 'hourly_rate' in data:
         update_data['hourly_rate'] = data['hourly_rate']
+    if 'avatar_url' in data:
+        update_data['avatar_url'] = data['avatar_url']
     if 'education' in data:
         update_data['education'] = data['education']
     if 'experience' in data:
@@ -206,7 +236,11 @@ def update_current_user():
         update_data['portfolio'] = data['portfolio']
     
     if update_data:
+        update_data['updated_at'] = datetime.utcnow()
         User.collection.update_one({'_id': ObjectId(current_user_id)}, {'$set': update_data})
+        changed_fields = [k for k in update_data.keys() if k != 'updated_at']
+        if changed_fields:
+            ProfileUpdateLog.create(current_user_id, changed_fields)
         
     if 'password' in data:
         User.set_password(current_user_id, data['password'])
@@ -215,8 +249,58 @@ def update_current_user():
     
     return jsonify({
         'message': 'Profile updated successfully',
-        'user': User.to_dict(updated_user)
+        'user': _user_response(updated_user)
     }), 200
+
+
+@api.route('/me/avatar', methods=['POST'])
+@jwt_required()
+def upload_profile_avatar():
+    """Upload current user avatar image."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+
+    if not user_doc:
+        return jsonify({'error': 'User not found'}), 404
+
+    if 'image' not in request.files:
+        return jsonify({'error': 'Image file is required'}), 400
+
+    image_file = request.files['image']
+    if not image_file or not image_file.filename:
+        return jsonify({'error': 'Image file is required'}), 400
+
+    if not _is_allowed_image(image_file.filename):
+        return jsonify({'error': 'Invalid image format'}), 400
+
+    os.makedirs(PROFILE_UPLOAD_DIR, exist_ok=True)
+
+    _, ext = os.path.splitext(secure_filename(image_file.filename))
+    filename = f"{current_user_id}_{uuid.uuid4().hex}{ext.lower()}"
+    filepath = os.path.join(PROFILE_UPLOAD_DIR, filename)
+    image_file.save(filepath)
+
+    avatar_url = f"{request.host_url.rstrip('/')}/api/uploads/profile-images/{filename}"
+
+    User.collection.update_one(
+        {'_id': ObjectId(current_user_id)},
+        {'$set': {'avatar_url': avatar_url, 'updated_at': datetime.utcnow()}}
+    )
+    ProfileUpdateLog.create(current_user_id, ['avatar_url'])
+
+    updated_user = User.get_by_id(current_user_id)
+    return jsonify({
+        'message': 'Avatar uploaded successfully',
+        'avatar_url': avatar_url,
+        'user': _user_response(updated_user)
+    }), 200
+
+
+@api.route('/uploads/profile-images/<path:filename>', methods=['GET'])
+def get_profile_image(filename):
+    """Serve uploaded profile images."""
+    os.makedirs(PROFILE_UPLOAD_DIR, exist_ok=True)
+    return send_from_directory(PROFILE_UPLOAD_DIR, filename)
 
 
 # ==================== Job Routes ====================
@@ -503,7 +587,7 @@ def get_user(user_id):
     if not user_doc:
         return jsonify({'error': 'User not found'}), 404
     
-    return jsonify(User.to_dict(user_doc)), 200
+    return jsonify(_user_response(user_doc)), 200
 
 
 @api.route('/freelancers', methods=['GET'])
@@ -518,7 +602,7 @@ def get_freelancers():
     
     freelancers_cursor = User.collection.find(query).sort('created_at', -1)
     
-    return jsonify([User.to_dict(f) for f in freelancers_cursor]), 200
+    return jsonify([_user_response(f) for f in freelancers_cursor]), 200
 
 
 # ==================== Admin Routes ====================
@@ -677,6 +761,19 @@ def get_conversations():
     
     return jsonify([Conversation.to_dict(c, current_user_id) for c in convs]), 200
 
+
+@api.route('/conversations/with/<user_id>', methods=['GET'])
+@jwt_required()
+def get_or_create_conversation_with_user(user_id):
+    """Get or create a direct conversation with another user."""
+    current_user_id = get_jwt_identity()
+
+    if not User.get_by_id(user_id):
+        return jsonify({'error': 'User not found'}), 404
+
+    conv = Conversation.get_or_create(current_user_id, user_id)
+    return jsonify(Conversation.to_dict(conv, current_user_id)), 200
+
 @api.route('/conversations/<conversation_id>', methods=['GET'])
 @jwt_required()
 def get_conversation(conversation_id):
@@ -697,6 +794,16 @@ def get_messages(conversation_id):
     conv = Conversation.collection.find_one({'_id': ObjectId(conversation_id)})
     if not conv or ObjectId(current_user_id) not in conv.get('participants', []):
         return jsonify({'error': 'Conversation not found or access denied'}), 404
+
+    # Mark messages from the other participant as read when this conversation is opened.
+    Message.collection.update_many(
+        {
+            'conversation_id': ObjectId(conversation_id),
+            'sender_id': {'$ne': ObjectId(current_user_id)},
+            'is_read': False
+        },
+        {'$set': {'is_read': True}}
+    )
         
     msgs = Message.collection.find({
         'conversation_id': ObjectId(conversation_id)
@@ -747,11 +854,21 @@ def send_message():
 def get_products():
     """Get all store products."""
     category = request.args.get('category')
+    page = request.args.get('page', default=1, type=int)
+    limit = request.args.get('limit', default=10, type=int)
+
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 10
+    if limit > 50:
+        limit = 50
+
     query = {'is_approved': True}
     if category:
         query['category'] = category
         
-    products = Product.collection.find(query).sort('created_at', -1)
+    products = Product.collection.find(query).sort('created_at', -1).skip((page - 1) * limit).limit(limit)
     return jsonify([Product.to_dict(p) for p in products]), 200
 
 @api.route('/products', methods=['POST'])

@@ -42,14 +42,14 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
 
     <ion-content class="store-content">
       <div class="products-section">
-        <div class="products-grid" *ngIf="!loading">
-          <div *ngFor="let item of (products.length > 0 ? products : mockItems)" class="product-card elevation-1">
+        <div class="products-grid" *ngIf="!loading || products.length > 0">
+          <div *ngFor="let item of products" class="product-card elevation-1">
             <div class="product-image-wrap">
-              <img [src]="item.image_url || item.image || 'https://via.placeholder.com/300x200'" class="product-image" />
+              <img [src]="item.image_url || 'https://via.placeholder.com/300x200'" class="product-image" />
             </div>
             
             <div class="product-details">
-              <h4 class="product-title">{{ item.name || item.title }}</h4>
+              <h4 class="product-title">{{ item.name }}</h4>
               <p class="product-desc">{{ item.description }}</p>
               
               <div class="price-row">
@@ -65,10 +65,14 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         
         <ion-spinner *ngIf="loading" class="ion-padding"></ion-spinner>
 
-        <div *ngIf="!loading && products.length === 0 && mockItems.length === 0" class="empty-state">
+        <div *ngIf="!loading && products.length === 0" class="empty-state">
           <div class="empty-icon"><ion-icon name="search"></ion-icon></div>
           <h3>No products found</h3>
         </div>
+
+        <ion-infinite-scroll threshold="120px" (ionInfinite)="loadMore($event)" [disabled]="!hasMore">
+          <ion-infinite-scroll-content loadingSpinner="dots" loadingText="Loading more products..."></ion-infinite-scroll-content>
+        </ion-infinite-scroll>
       </div>
     </ion-content>
 
@@ -107,15 +111,16 @@ export class StorePage implements OnInit {
   searchQuery = "";
   selectedCategory = "All";
   loading = false;
+  loadingMore = false;
   products: ApiProduct[] = [];
   categories = ["All", "Templates", "Graphics", "UI Kits", "Icons"];
   cartItems: ApiProduct[] = [];
   cartCount = 0;
+  currentPage = 1;
+  readonly pageSize = 10;
+  hasMore = true;
 
   private readonly cartStorageKey = 'fh_store_cart';
-
-  mockItems: any[] = [
-  ];
 
   constructor(private api: ApiService, private toast: ToastController) { }
 
@@ -126,13 +131,46 @@ export class StorePage implements OnInit {
 
   loadProducts() {
     this.loading = true;
-    this.api.getProducts(this.selectedCategory === 'All' ? undefined : this.selectedCategory).subscribe({
-      next: (data) => {
-        this.products = data;
-        this.loading = false;
-      },
-      error: () => this.loading = false
-    });
+    this.currentPage = 1;
+    this.hasMore = true;
+    setTimeout(() => {
+      this.api.getProducts(this.selectedCategory === 'All' ? undefined : this.selectedCategory, this.currentPage, this.pageSize).subscribe({
+        next: (data) => {
+          this.products = data;
+          this.loading = false;
+          this.hasMore = data.length === this.pageSize;
+        },
+        error: () => this.loading = false
+      });
+    }, 1000);
+  }
+
+  loadMore(event: any) {
+    if (!this.hasMore || this.loadingMore) {
+      event.target.complete();
+      return;
+    }
+
+    this.loadingMore = true;
+    const nextPage = this.currentPage + 1;
+    setTimeout(() => {
+      this.api.getProducts(this.selectedCategory === 'All' ? undefined : this.selectedCategory, nextPage, this.pageSize).subscribe({
+        next: (data) => {
+          this.products = [...this.products, ...data];
+          this.currentPage = nextPage;
+          this.hasMore = data.length === this.pageSize;
+          this.loadingMore = false;
+          event.target.complete();
+          if (!this.hasMore) {
+            event.target.disabled = true;
+          }
+        },
+        error: () => {
+          this.loadingMore = false;
+          event.target.complete();
+        }
+      });
+    }, 1000);
   }
 
   onCategoryChange(cat: string) {

@@ -114,7 +114,7 @@ import { RoleService } from '../../services/role.service';
             <span *ngFor="let skill of f.skills" class="skill-tag">{{ skill }}</span>
           </div>
           <div class="card-actions">
-            <button class="action-btn outline-btn" (click)="goToMessages(); $event.stopPropagation()">Message</button>
+            <button class="action-btn outline-btn" (click)="goToMessages(f); $event.stopPropagation()">Message</button>
             <button class="action-btn" (click)="handleInteraction(); $event.stopPropagation()">View Profile</button>
           </div>
         </div>
@@ -308,7 +308,7 @@ export class BrowsePage implements OnInit {
           ...p,
           title: p.name,
           freelancer: 'Pro Seller', // In real app, join with User
-          avatar: 'https://i.pravatar.cc/150?u=' + p.seller_id,
+          avatar: p.seller_avatar_url || this.api.defaultAvatarUrl,
           rating: 4.8 + (Math.random() * 0.2), // Simulated rating
           price: '$' + p.price,
           image: p.image_url || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400'
@@ -327,7 +327,7 @@ export class BrowsePage implements OnInit {
           rating: 5.0,
           reviews: Math.floor(Math.random() * 10),
           location: 'Remote',
-          avatar: 'https://i.pravatar.cc/150?u=' + f.id,
+          avatar: f.avatar_url || this.api.defaultAvatarUrl,
           verified: true,
           skills: f.skills ? f.skills.split(',').map((s: string) => s.trim()) : []
         }));
@@ -344,7 +344,7 @@ export class BrowsePage implements OnInit {
           deadline: j.duration || 'Flexible',
           skills: j.skills_required ? j.skills_required.split(',').map((s: string) => s.trim()) : [],
           proposals: j.application_count || 0,
-          avatar: 'https://i.pravatar.cc/150?u=' + j.client_id
+          avatar: j.client_avatar_url || this.api.defaultAvatarUrl
         }));
         this.loading = false;
       },
@@ -365,12 +365,20 @@ export class BrowsePage implements OnInit {
     else this.router.navigate(['/freelancer-profile']);
   }
 
-  goToMessages() {
+  goToMessages(freelancer: any) {
     if (!this.roleService.isAuthenticated) {
       this.showLoginPrompt = true;
       return;
     }
-    this.router.navigate(['/conversations']);
+
+    this.api.getOrCreateConversationWithUser(freelancer.id).subscribe({
+      next: (conversation) => {
+        this.router.navigate(['/chat', conversation.id]);
+      },
+      error: () => {
+        this.router.navigate(['/conversations']);
+      }
+    });
   }
 
   goToLogin() {

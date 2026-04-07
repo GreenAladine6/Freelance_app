@@ -12,6 +12,7 @@ export interface ApiUser {
     bio?: string;
     skills?: string;
     hourly_rate?: number;
+    avatar_url?: string;
     education?: any[];
     experience?: any[];
     portfolio?: any[];
@@ -46,6 +47,10 @@ export interface RegisterPayload {
     bio?: string;
     skills?: string;
     hourly_rate?: number;
+    avatar_url?: string;
+    education?: any[];
+    experience?: any[];
+    portfolio?: any[];
 }
 
 export interface ApiJob {
@@ -96,6 +101,7 @@ export interface ApiConversation {
     last_message_at: string;
     other_user: ApiUser;
     last_message: ApiMessage;
+    unread_count?: number;
 }
 
 export interface ApiMessage {
@@ -115,12 +121,20 @@ export interface ApiProduct {
     image_url: string;
     category: string;
     seller_id: string;
+    seller_avatar_url?: string;
     created_at: string;
+}
+
+export interface AvatarUploadResponse {
+    message: string;
+    avatar_url: string;
+    user: ApiUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
     readonly baseUrl = 'http://localhost:5000/api';
+    readonly defaultAvatarUrl = `${this.baseUrl}/uploads/profile-images/default.avif`;
 
     constructor(private http: HttpClient) { }
 
@@ -154,6 +168,12 @@ export class ApiService {
 
     getUser(userId: string): Observable<ApiUser> {
         return this.http.get<ApiUser>(`${this.baseUrl}/users/${userId}`);
+    }
+
+    uploadProfileImage(file: File): Observable<AvatarUploadResponse> {
+        const formData = new FormData();
+        formData.append('image', file);
+        return this.http.post<AvatarUploadResponse>(`${this.baseUrl}/me/avatar`, formData);
     }
 
     // ── Jobs ──────────────────────────────────────────────
@@ -246,6 +266,10 @@ export class ApiService {
         return this.http.get<ApiConversation[]>(`${this.baseUrl}/conversations`);
     }
 
+    getOrCreateConversationWithUser(userId: string): Observable<ApiConversation> {
+        return this.http.get<ApiConversation>(`${this.baseUrl}/conversations/with/${userId}`);
+    }
+
     getConversation(conversationId: string): Observable<ApiConversation> {
         return this.http.get<ApiConversation>(`${this.baseUrl}/conversations/${conversationId}`);
     }
@@ -259,9 +283,11 @@ export class ApiService {
     }
 
     // ── Store ─────────────────────────────────────────────
-    getProducts(category?: string): Observable<ApiProduct[]> {
+    getProducts(category?: string, page: number = 1, limit: number = 10): Observable<ApiProduct[]> {
         let params = new HttpParams();
         if (category) params = params.set('category', category);
+        params = params.set('page', String(page));
+        params = params.set('limit', String(limit));
         return this.http.get<ApiProduct[]>(`${this.baseUrl}/products`, { params });
     }
 

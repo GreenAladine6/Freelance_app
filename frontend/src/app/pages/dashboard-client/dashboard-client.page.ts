@@ -18,7 +18,7 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
         <!-- Header -->
         <header class="app-bar">
           <div class="user-row">
-            <img src="https://i.pravatar.cc/150?u=client" class="avatar" (click)="router.navigate(['/profile-client'])" alt="Profile">
+            <img [src]="currentAvatar" class="avatar" (click)="router.navigate(['/profile-client'])" alt="Profile">
             <h2 class="greeting">Hi, {{firstName}} 👋</h2>
           </div>
           <div class="icons">
@@ -64,7 +64,7 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
           </div>
           <div class="freelancer-scroll">
             <div class="freelancer-card" *ngFor="let f of freelancers" (click)="router.navigate(['/freelancer-profile', f.id])">
-              <img [src]="'https://i.pravatar.cc/150?u=' + f.id" [alt]="f.full_name || f.username">
+              <img [src]="f.avatar_url || api.defaultAvatarUrl" [alt]="f.full_name || f.username">
               <p class="f-name">{{f.full_name || f.username}}</p>
               <p class="f-skill">{{(f.skills ? f.skills.split(',')[0] : 'Freelancer')}}</p>
               <div class="f-rating">
@@ -178,6 +178,10 @@ export class DashboardClientPage implements OnInit {
   loading = false;
   categories = CATEGORIES;
 
+  get currentAvatar() {
+    return this.roleService.user?.avatar_url || this.api.defaultAvatarUrl;
+  }
+
   get firstName() { return this.roleService.userName.split(' ')[0]; }
   get stats() {
     return [
@@ -187,7 +191,7 @@ export class DashboardClientPage implements OnInit {
     ];
   }
 
-  constructor(public router: Router, public roleService: RoleService, private api: ApiService) { }
+  constructor(public router: Router, public roleService: RoleService, public api: ApiService) { }
 
   ngOnInit() {
     this.loadData();
