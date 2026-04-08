@@ -16,7 +16,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       <ion-toolbar>
         <ion-title>Store</ion-title>
         <ion-buttons slot="end">
-          <button class="cart-btn">
+          <button class="cart-btn" (click)="openCart()">
             <ion-icon name="cart-outline"></ion-icon>
             <span class="cart-badge" *ngIf="cartCount > 0">{{ cartCount }}</span>
           </button>
@@ -76,6 +76,40 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       </div>
     </ion-content>
 
+    <div class="modal-overlay" *ngIf="isCartOpen" (click)="closeCart()"></div>
+    <div class="bottom-sheet" *ngIf="isCartOpen" [class.show]="isCartOpen">
+      <div class="sheet-head">
+        <h3>My Purchases</h3>
+        <ion-button fill="clear" color="medium" (click)="closeCart()">
+          <ion-icon name="close"></ion-icon>
+        </ion-button>
+      </div>
+
+      <div class="cart-empty" *ngIf="cartItems.length === 0">
+        <ion-icon name="cart-outline"></ion-icon>
+        <p>Your cart is empty</p>
+      </div>
+
+      <div class="cart-list" *ngIf="cartItems.length > 0">
+        <div class="cart-item" *ngFor="let item of cartItems">
+          <img [src]="item.image_url || 'https://via.placeholder.com/120x90'" alt="Product" />
+          <div class="cart-info">
+            <p class="cart-title">{{ item.name }}</p>
+            <p class="cart-price">{{ item.price }} USD</p>
+          </div>
+          <button class="remove-btn" (click)="removeFromCart(item)">Remove</button>
+        </div>
+      </div>
+
+      <div class="cart-footer" *ngIf="cartItems.length > 0">
+        <div class="cart-total">
+          <span>Total</span>
+          <strong>{{ getCartTotal() }} USD</strong>
+        </div>
+        <button class="cart-action solid" (click)="validateCart()">Valider panier</button>
+      </div>
+    </div>
+
     <app-bottom-nav></app-bottom-nav>
   `,
   styles: [`
@@ -105,6 +139,46 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .current-price { font-size: 14px; font-weight: 700; color: #8B5CF6; }
     .add-cart-btn { width: 100%; padding: 8px; background: #8B5CF6; color: white; border-radius: 8px; font-size: 12px; font-weight: 500; border: none; margin-top: auto; }
     .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 16px; text-align: center; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+    .bottom-sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      max-width: 420px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 24px 24px 0 0;
+      padding: 16px;
+      z-index: 101;
+      transform: translateY(100%);
+      transition: transform 0.3s;
+      max-height: 78vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .bottom-sheet.show { transform: translateY(0); }
+    .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .sheet-head h3 { margin: 0; font-size: 18px; font-weight: 700; color: #111827; }
+
+    .cart-empty { padding: 30px 10px; text-align: center; color: #6b7280; }
+    .cart-empty ion-icon { font-size: 42px; }
+    .cart-empty p { margin: 8px 0 0; font-size: 14px; }
+
+    .cart-list { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
+    .cart-item { display: flex; align-items: center; gap: 10px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px; }
+    .cart-item img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; }
+    .cart-info { flex: 1; min-width: 0; }
+    .cart-title { margin: 0; font-size: 13px; font-weight: 700; color: #111827; }
+    .cart-price { margin: 4px 0 0; font-size: 12px; color: #8B5CF6; font-weight: 700; }
+    .remove-btn { border: none; background: #fee2e2; color: #b91c1c; border-radius: 8px; padding: 6px 8px; font-size: 11px; font-weight: 700; }
+
+    .cart-footer { border-top: 1px solid #e5e7eb; margin-top: 10px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .cart-total { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #374151; }
+    .cart-total strong { color: #111827; font-size: 16px; }
+    .cart-action { width: 100%; border: none; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 700; }
+    .cart-action.solid { background: #8B5CF6; color: white; }
   `]
 })
 export class StorePage implements OnInit {
@@ -116,13 +190,14 @@ export class StorePage implements OnInit {
   categories = ["All", "Templates", "Graphics", "UI Kits", "Icons"];
   cartItems: ApiProduct[] = [];
   cartCount = 0;
+  isCartOpen = false;
   currentPage = 1;
   readonly pageSize = 10;
   hasMore = true;
 
   private readonly cartStorageKey = 'fh_store_cart';
 
-  constructor(private api: ApiService, private toast: ToastController) { }
+  constructor(private api: ApiService, private toast: ToastController, private router: Router) { }
 
   ngOnInit() {
     this.loadCart();
@@ -214,5 +289,43 @@ export class StorePage implements OnInit {
       this.cartItems = [];
       this.cartCount = 0;
     }
+  }
+
+  openCart() {
+    this.isCartOpen = true;
+  }
+
+  closeCart() {
+    this.isCartOpen = false;
+  }
+
+  getCartTotal(): number {
+    return this.cartItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  }
+
+  async removeFromCart(item: ApiProduct) {
+    this.cartItems = this.cartItems.filter((cartItem) => cartItem.id !== item.id);
+    this.cartCount = this.cartItems.length;
+    localStorage.setItem(this.cartStorageKey, JSON.stringify(this.cartItems));
+    const t = await this.toast.create({
+      message: 'Item removed from cart',
+      duration: 1500,
+      color: 'medium'
+    });
+    t.present();
+  }
+
+  async validateCart() {
+    if (this.cartItems.length === 0) {
+      const t = await this.toast.create({
+        message: 'Your cart is empty',
+        duration: 1500,
+        color: 'warning'
+      });
+      t.present();
+      return;
+    }
+    this.closeCart();
+    this.router.navigate(['/store/checkout']);
   }
 }

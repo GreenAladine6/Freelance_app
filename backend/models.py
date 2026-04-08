@@ -32,8 +32,11 @@ class User:
         education=None,
         experience=None,
         portfolio=None,
+        is_available_for_hire=None,
     ):
         password_hash = generate_password_hash(password) if password else None
+        if is_available_for_hire is None:
+            is_available_for_hire = user_type == 'freelancer'
         user_doc = {
             'username': username,
             'email': email,
@@ -47,6 +50,7 @@ class User:
             'education': education or [],
             'experience': experience or [],
             'portfolio': portfolio or [],
+            'is_available_for_hire': is_available_for_hire,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -83,6 +87,7 @@ class User:
     def to_dict(user_doc):
         if not user_doc:
             return None
+        is_freelancer = user_doc.get('user_type') == 'freelancer'
         return {
             'id': str(user_doc['_id']),
             'username': user_doc.get('username'),
@@ -96,6 +101,7 @@ class User:
             'education': user_doc.get('education', []),
             'experience': user_doc.get('experience', []),
             'portfolio': user_doc.get('portfolio', []),
+            'is_available_for_hire': user_doc.get('is_available_for_hire', is_freelancer),
             'created_at': user_doc.get('created_at').isoformat() if hasattr(user_doc.get('created_at'), 'isoformat') else user_doc.get('created_at')
         }
 
@@ -305,5 +311,72 @@ class ProfileUpdateLog:
             'id': str(doc.get('_id')),
             'user_id': str(doc.get('user_id')) if doc.get('user_id') else None,
             'changed_fields': doc.get('changed_fields', []),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+
+class Notification:
+    collection = db.notifications
+
+    @staticmethod
+    def create(recipient_id, notification_type, title, message, related_id=None, related_type=None):
+        """Create a new notification for a user."""
+        notif_doc = {
+            'recipient_id': ObjectId(recipient_id),
+            'notification_type': notification_type,  # e.g., 'job_application', 'message', etc.
+            'title': title,
+            'message': message,
+            'related_id': ObjectId(related_id) if related_id else None,
+            'related_type': related_type,  # e.g., 'application', 'job', 'user', etc.
+            'is_read': False,
+            'created_at': datetime.utcnow()
+        }
+        res = Notification.collection.insert_one(notif_doc)
+        return Notification.get_by_id(res.inserted_id)
+
+    @staticmethod
+    def get_by_id(notif_id):
+        try:
+            return Notification.collection.find_one({'_id': ObjectId(notif_id)})
+        except:
+            return None
+
+    @staticmethod
+    def mark_as_read(notif_id):
+        """Mark a notification as read."""
+        try:
+            Notification.collection.update_one(
+                {'_id': ObjectId(notif_id)},
+                {'$set': {'is_read': True}}
+            )
+            return True
+        except:
+            return False
+
+    @staticmethod
+    def mark_all_as_read(recipient_id):
+        """Mark all notifications for a user as read."""
+        try:
+            Notification.collection.update_many(
+                {'recipient_id': ObjectId(recipient_id), 'is_read': False},
+                {'$set': {'is_read': True}}
+            )
+            return True
+        except:
+            return False
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        return {
+            'id': str(doc['_id']),
+            'recipient_id': str(doc.get('recipient_id')) if doc.get('recipient_id') else None,
+            'notification_type': doc.get('notification_type'),
+            'title': doc.get('title'),
+            'message': doc.get('message'),
+            'related_id': str(doc.get('related_id')) if doc.get('related_id') else None,
+            'related_type': doc.get('related_type'),
+            'is_read': doc.get('is_read', False),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }

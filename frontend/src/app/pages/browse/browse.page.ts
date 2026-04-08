@@ -115,7 +115,7 @@ import { RoleService } from '../../services/role.service';
           </div>
           <div class="card-actions">
             <button class="action-btn outline-btn" (click)="goToMessages(f); $event.stopPropagation()">Message</button>
-            <button class="action-btn" (click)="handleInteraction(); $event.stopPropagation()">View Profile</button>
+            <button class="action-btn" (click)="goToFreelancerProfile(f); $event.stopPropagation()">View Profile</button>
           </div>
         </div>
       </div>
@@ -379,6 +379,13 @@ export class BrowsePage implements OnInit {
         this.router.navigate(['/conversations']);
       }
     });
+  }
+
+  goToFreelancerProfile(freelancer: any) {
+    if (!freelancer?.id) {
+      return;
+    }
+    this.router.navigate(['/freelancer-profile', freelancer.id]);
   }
 
   goToLogin() {

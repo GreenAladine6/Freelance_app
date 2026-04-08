@@ -16,6 +16,7 @@ export interface ApiUser {
     education?: any[];
     experience?: any[];
     portfolio?: any[];
+    is_available_for_hire?: boolean;
     created_at?: string;
 }
 
@@ -122,6 +123,18 @@ export interface ApiProduct {
     category: string;
     seller_id: string;
     seller_avatar_url?: string;
+    created_at: string;
+}
+
+export interface ApiNotification {
+    id: string;
+    recipient_id: string;
+    notification_type: string;
+    title: string;
+    message: string;
+    related_id?: string;
+    related_type?: string;
+    is_read: boolean;
     created_at: string;
 }
 
@@ -280,6 +293,27 @@ export class ApiService {
 
     sendMessage(payload: { recipient_id?: string; conversation_id?: string; text: string }): Observable<ApiMessage> {
         return this.http.post<ApiMessage>(`${this.baseUrl}/messages`, payload);
+    }
+
+    // ── Notifications ─────────────────────────────────────
+    getNotifications(page: number = 1, limit: number = 20, unreadOnly: boolean = false): Observable<{ notifications: ApiNotification[]; total_count: number; unread_count: number; page: number; limit: number }> {
+        let params = new HttpParams();
+        params = params.set('page', String(page));
+        params = params.set('limit', String(limit));
+        if (unreadOnly) params = params.set('unread_only', 'true');
+        return this.http.get<{ notifications: ApiNotification[]; total_count: number; unread_count: number; page: number; limit: number }>(`${this.baseUrl}/notifications`, { params });
+    }
+
+    getUnreadNotificationCount(): Observable<{ unread_count: number }> {
+        return this.http.get<{ unread_count: number }>(`${this.baseUrl}/notifications/unread-count`);
+    }
+
+    markNotificationAsRead(notificationId: string): Observable<{ message: string; notification: ApiNotification }> {
+        return this.http.put<{ message: string; notification: ApiNotification }>(`${this.baseUrl}/notifications/${notificationId}/read`, {});
+    }
+
+    markAllNotificationsAsRead(): Observable<{ message: string; unread_count: number }> {
+        return this.http.put<{ message: string; unread_count: number }>(`${this.baseUrl}/notifications/read-all`, {});
     }
 
     // ── Store ─────────────────────────────────────────────

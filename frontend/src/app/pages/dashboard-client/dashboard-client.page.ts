@@ -5,13 +5,14 @@ import { IonicModule } from '@ionic/angular';
 import { ApiService, ApiUser, ApiJob } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
+import { NotificationBadgeComponent } from '../../components/notification-badge/notification-badge.component';
 
 const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'Business'];
 
 @Component({
   selector: 'app-dashboard-client',
   standalone: true,
-  imports: [CommonModule, IonicModule, BottomNavComponent],
+  imports: [CommonModule, IonicModule, BottomNavComponent, NotificationBadgeComponent],
   template: `
     <ion-content class="client-content">
       <div class="page-wrap">
@@ -23,10 +24,7 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
           </div>
           <div class="icons">
             <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
-            <button class="icon-btn">
-              <ion-icon name="notifications-outline"></ion-icon>
-              <span class="dot"></span>
-            </button>
+            <app-notification-badge></app-notification-badge>
           </div>
         </header>
 

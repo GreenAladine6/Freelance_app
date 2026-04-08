@@ -3,7 +3,7 @@ import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { Router } from '@angular/router';
-import { ApiService, ApiJob } from '../../services/api.service';
+import { ApiService, ApiJob, ApiApplication } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { ToastController } from '@ionic/angular';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
@@ -101,17 +101,43 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
        <div class="modal-body">
          <p class="desc">{{ selectedJob.description }}</p>
          <div *ngIf="!isClient()" class="apply-form">
+           <div class="job-detail-chips">
+             <span class="job-chip" *ngIf="selectedJob.duration"><ion-icon name="time-outline"></ion-icon>{{ selectedJob.duration }}</span>
+             <span class="job-chip" *ngIf="selectedJob.skills_required"><ion-icon name="construct-outline"></ion-icon>{{ selectedJob.skills_required }}</span>
+             <span class="job-chip"><ion-icon name="logo-usd"></ion-icon>{{ selectedJob.budget }} USD</span>
+           </div>
+           <div class="review-check">
+             <ion-checkbox [(ngModel)]="hasReviewedDetails" labelPlacement="end">I reviewed the job details before applying</ion-checkbox>
+           </div>
            <label>Cover Letter</label>
            <textarea [(ngModel)]="applyCoverLetter" rows="4" placeholder="Tell the client why you're the right fit"></textarea>
            <label>Proposed Rate (optional)</label>
            <input type="number" [(ngModel)]="applyRate" placeholder="0" />
+           <p class="apply-hint" *ngIf="!hasReviewedDetails">Please review and confirm job details first.</p>
            <p class="apply-error" *ngIf="applyError">{{ applyError }}</p>
-           <button class="apply-btn" [disabled]="applying" (click)="submitApplication()">
+           <button class="apply-btn" [disabled]="applying || !hasReviewedDetails" (click)="submitApplication()">
              {{ applying ? 'Submitting...' : 'Apply for this Job' }}
            </button>
          </div>
-         <div *ngIf="isClient()" class="client-note">
-           Clients can post jobs from the create button below.
+           <div *ngIf="isClient()" class="client-note">
+             <div class="client-apps-header">
+               <h4>Applications</h4>
+               <span *ngIf="applicationsLoading">Loading...</span>
+             </div>
+
+             <p *ngIf="!applicationsLoading && selectedJobApplications.length === 0" class="client-empty">No applications yet for this job.</p>
+
+             <div class="client-app-item" *ngFor="let app of selectedJobApplications">
+               <div class="client-app-main">
+                 <p class="app-freelancer">{{ app.freelancer_name || 'Freelancer' }}</p>
+                 <p class="app-meta">Status: <strong>{{ app.status | titlecase }}</strong><span *ngIf="app.proposed_rate"> · Rate: {{ app.proposed_rate }} USD</span></p>
+                 <p class="app-cover">{{ app.cover_letter }}</p>
+               </div>
+               <div class="client-app-actions" *ngIf="app.status === 'pending'">
+                 <button class="client-act approve" [disabled]="processingApplicationId === app.id" (click)="approveApplication(app)">Approve</button>
+                 <button class="client-act reject" [disabled]="processingApplicationId === app.id" (click)="rejectApplication(app)">Reject</button>
+               </div>
+             </div>
          </div>
        </div>
     </div>
@@ -173,13 +199,31 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .desc { font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 24px; }
     .apply-btn { width: 100%; padding: 14px; background: #8B5CF6; color: white; border-radius: 9999px; font-size: 14px; font-weight: 700; border: none; }
     .apply-form { display: flex; flex-direction: column; gap: 10px; }
+    .job-detail-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+    .job-chip { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 999px; background: #f3f4f6; color: #374151; font-size: 11px; font-weight: 700; }
+    .review-check { border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px 12px; margin-top: 2px; }
+    .review-check ion-checkbox { font-size: 12px; color: #374151; }
     .apply-form label { font-size: 12px; font-weight: 700; color: #374151; }
     .apply-form textarea, .apply-form input {
       width: 100%; border: 1px solid #E5E7EB; border-radius: 12px; padding: 12px;
       font-size: 14px; outline: none; resize: none;
     }
+    .apply-hint { margin: 0; color: #6B7280; font-size: 12px; font-weight: 600; }
     .apply-error { margin: 0; color: #DC2626; font-size: 12px; font-weight: 600; }
-    .client-note { padding: 12px 0 4px; color: #6B7280; font-size: 13px; }
+    .client-note { padding: 8px 0 4px; color: #6B7280; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+    .client-apps-header { display: flex; justify-content: space-between; align-items: center; }
+    .client-apps-header h4 { margin: 0; font-size: 14px; color: #111827; }
+    .client-apps-header span { font-size: 12px; color: #6B7280; }
+    .client-empty { margin: 0; font-size: 12px; color: #6B7280; }
+    .client-app-item { border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .client-app-main { display: flex; flex-direction: column; gap: 3px; }
+    .app-freelancer { margin: 0; font-size: 13px; font-weight: 700; color: #111827; }
+    .app-meta { margin: 0; font-size: 12px; color: #4B5563; }
+    .app-cover { margin: 0; font-size: 12px; color: #374151; line-height: 1.5; }
+    .client-app-actions { display: flex; gap: 8px; }
+    .client-act { border: none; border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700; }
+    .client-act.approve { background: #DCFCE7; color: #166534; }
+    .client-act.reject { background: #FEE2E2; color: #B91C1C; }
   `]
 })
 export class GigsListPage implements OnInit {
@@ -195,6 +239,10 @@ export class GigsListPage implements OnInit {
   applyCoverLetter = '';
   applyRate = '';
   applyError: string | null = null;
+  hasReviewedDetails = false;
+  selectedJobApplications: ApiApplication[] = [];
+  applicationsLoading = false;
+  processingApplicationId: string | null = null;
 
   mockJobs: ApiJob[] = [];
 
@@ -231,6 +279,73 @@ export class GigsListPage implements OnInit {
     this.applyCoverLetter = '';
     this.applyRate = '';
     this.applyError = null;
+    this.hasReviewedDetails = false;
+    if (this.isClient()) {
+      this.loadSelectedJobApplications();
+    }
+  }
+
+  loadSelectedJobApplications() {
+    if (!this.selectedJob) {
+      this.selectedJobApplications = [];
+      return;
+    }
+    this.applicationsLoading = true;
+    this.api.getJobApplications(this.selectedJob.id).subscribe({
+      next: (apps) => {
+        this.selectedJobApplications = apps || [];
+        this.applicationsLoading = false;
+      },
+      error: () => {
+        this.selectedJobApplications = [];
+        this.applicationsLoading = false;
+      }
+    });
+  }
+
+  async approveApplication(app: ApiApplication) {
+    if (!this.selectedJob || this.processingApplicationId) return;
+    this.processingApplicationId = app.id;
+    this.api.acceptApplication(app.id).subscribe({
+      next: async () => {
+        this.processingApplicationId = null;
+        this.selectedJobApplications = this.selectedJobApplications.map((a) =>
+          a.id === app.id ? { ...a, status: 'accepted' } : a
+        );
+        this.jobs = this.jobs.map((j) =>
+          j.id === this.selectedJob!.id ? { ...j, status: 'in_progress' } : j
+        );
+        const t = await this.toast.create({ message: 'Application approved', duration: 1800, color: 'success' });
+        t.present();
+      },
+      error: async (err) => {
+        this.processingApplicationId = null;
+        const msg = err.error?.error || 'Failed to approve application';
+        const t = await this.toast.create({ message: msg, duration: 2200, color: 'danger' });
+        t.present();
+      }
+    });
+  }
+
+  async rejectApplication(app: ApiApplication) {
+    if (!this.selectedJob || this.processingApplicationId) return;
+    this.processingApplicationId = app.id;
+    this.api.rejectApplication(app.id).subscribe({
+      next: async () => {
+        this.processingApplicationId = null;
+        this.selectedJobApplications = this.selectedJobApplications.map((a) =>
+          a.id === app.id ? { ...a, status: 'rejected' } : a
+        );
+        const t = await this.toast.create({ message: 'Application rejected', duration: 1800, color: 'warning' });
+        t.present();
+      },
+      error: async (err) => {
+        this.processingApplicationId = null;
+        const msg = err.error?.error || 'Failed to reject application';
+        const t = await this.toast.create({ message: msg, duration: 2200, color: 'danger' });
+        t.present();
+      }
+    });
   }
 
   async loadJobs() {
@@ -271,6 +386,11 @@ export class GigsListPage implements OnInit {
 
     if (!this.applyCoverLetter.trim()) {
       this.applyError = 'Please add a cover letter.';
+      return;
+    }
+
+    if (!this.hasReviewedDetails) {
+      this.applyError = 'Please review job details before applying.';
       return;
     }
 

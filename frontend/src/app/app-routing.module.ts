@@ -31,8 +31,10 @@ const routes: Routes = [
   { path: 'dashboard-client', loadComponent: () => import('./pages/dashboard-client/dashboard-client.page').then(m => m.DashboardClientPage), canActivate: [AuthGuard] },
   { path: 'dashboard', loadComponent: () => import('./pages/dashboard/dashboard.page').then(m => m.DashboardPage), canActivate: [AuthGuard] },
   { path: 'store', loadComponent: () => import('./pages/store/store.page').then(m => m.StorePage) },
+  { path: 'store/checkout', loadComponent: () => import('./pages/store-checkout/store-checkout.page').then(m => m.StoreCheckoutPage) },
   { path: 'interests', loadComponent: () => import('./pages/interests/interests.page').then(m => m.InterestsPage) },
   { path: 'signup', loadComponent: () => import('./pages/signup/signup.page').then(m => m.SignupPage) },
+  { path: 'notifications', loadComponent: () => import('./pages/notifications/notifications.page').then(m => m.NotificationsPage), canActivate: [AuthGuard] },
   { path: 'splash', loadComponent: () => import('./pages/splash/splash.page').then(m => m.SplashPage) },
   { path: 'not-found', loadComponent: () => import('./pages/not-found/not-found.page').then(m => m.NotFoundPage) },
   { path: '**', redirectTo: 'not-found' }

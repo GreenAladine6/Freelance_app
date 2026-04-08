@@ -26,7 +26,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         <div class="profile-info-center">
           <div class="avatar-wrap">
               <img [src]="profileImage || selectedAvatarPreview || defaultAvatar" alt="Profile" class="main-avatar" />
-            <div class="status-indicator"></div>
+            <div class="status-indicator" [class.unavailable]="!isAvailableForHire"></div>
           </div>
           <h2 class="display-name">{{ displayName }}</h2>
           <div class="badges-row">
@@ -39,7 +39,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
           </div>
           <div class="hero-meta">
             <p *ngIf="rate" class="rate-text">{{ rate }}</p>
-            <p class="availability-text">Available for hire</p>
+            <p class="availability-text" [class.unavailable]="!isAvailableForHire">{{ isAvailableForHire ? 'Available for hire' : 'Not available now' }}</p>
           </div>
           <div class="profile-actions">
             <button *ngIf="!isOwnProfile" class="message-btn" (click)="goToMessages()">
@@ -167,6 +167,13 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         <label>Hourly Rate ($)</label>
         <input type="number" [(ngModel)]="editRate" placeholder="45" class="custom-input" />
       </div>
+      <div class="form-group mb-lg toggle-group">
+        <div class="toggle-label-wrap">
+          <label>Availability</label>
+          <p>Show clients whether you are open to new work.</p>
+        </div>
+        <ion-toggle color="success" [(ngModel)]="editAvailableForHire">Available for hire</ion-toggle>
+      </div>
       <div class="form-group mb-lg">
         <label>Upload Profile Image</label>
         <input type="file" accept="image/*" (change)="onAvatarFileSelected($event)" class="custom-input file-input" />
@@ -213,6 +220,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .avatar-wrap { position: relative; margin-bottom: 16px; }
     .main-avatar { width: 114px; height: 114px; border-radius: 50%; border: 4px solid white; box-shadow: 0 8px 18px rgba(23, 57, 72, 0.18); object-fit: cover; }
     .status-indicator { position: absolute; bottom: 8px; right: 8px; width: 20px; height: 20px; background: #22c55e; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+    .status-indicator.unavailable { background: #ef4444; }
     .display-name { font-size: 21px; font-weight: 800; color: #122531; margin: 0 0 8px; }
     .badges-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .role-badge { background: #ddf4ed; color: #15735c; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 12px; border-radius: 9999px; }
@@ -222,6 +230,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .hero-meta { display: flex; align-items: center; gap: 10px; }
     .rate-text { font-size: 12px; font-weight: 700; color: #0f6d94; margin: 0; }
     .availability-text { font-size: 12px; font-weight: 700; color: #0f8f63; margin: 0; }
+    .availability-text.unavailable { color: #b91c1c; }
     .profile-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
     .message-btn {
       display: inline-flex; align-items: center; gap: 8px;
@@ -273,6 +282,9 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .edit-avatar-preview img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; box-shadow: 0 8px 18px rgba(23, 57, 72, 0.14); }
     .edit-avatar-preview p { margin: 0 0 8px; font-size: 11px; font-weight: 700; color: #6b7f8c; }
     .form-group label { display: block; font-size: 12px; font-weight: 700; color: #3b4e5a; margin-bottom: 4px; }
+    .toggle-group { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .toggle-label-wrap { flex: 1; }
+    .toggle-label-wrap p { margin: 4px 0 0; font-size: 11px; color: #6b7280; }
     .custom-input, .custom-textarea { width: 100%; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px 16px; font-size: 14px; outline: none; }
     .custom-input:focus, .custom-textarea:focus { border-color: #0f6d94; box-shadow: 0 0 0 2px rgba(15, 109, 148, 0.15); }
     .custom-textarea { resize: none; }
@@ -314,6 +326,8 @@ export class FreelancerProfilePage implements OnInit {
   saving = false;
   saveMsg = '';
   isOwnProfile = true;
+  isAvailableForHire = true;
+  editAvailableForHire = true;
 
   constructor(
     private router: Router,
@@ -354,6 +368,7 @@ export class FreelancerProfilePage implements OnInit {
           this.rate = u.hourly_rate ? '$' + u.hourly_rate + '/hr' : null;
           this.education = u.education || [];
           this.experience = u.experience || [];
+          this.isAvailableForHire = u.is_available_for_hire !== false;
         }
       } catch { }
     } else {
@@ -366,6 +381,7 @@ export class FreelancerProfilePage implements OnInit {
         this.rate = currentUser.hourly_rate ? '$' + currentUser.hourly_rate + '/hr' : 'Negotiable';
         this.education = currentUser.education || [];
         this.experience = currentUser.experience || [];
+        this.isAvailableForHire = currentUser.is_available_for_hire !== false;
       }
     }
   }
@@ -405,6 +421,7 @@ export class FreelancerProfilePage implements OnInit {
     this.editExperience = this.formatExperience(this.experience);
     this.editPortfolio = this.formatPortfolio(this.portfolioItems);
     this.editRate = this.rate ? this.rate.replace(/[^0-9.]/g, '') : '';
+    this.editAvailableForHire = this.isAvailableForHire;
     this.saveMsg = '';
     this.editing = true;
   }
@@ -420,6 +437,7 @@ export class FreelancerProfilePage implements OnInit {
       payload.experience = this.parseExperience(this.editExperience);
       payload.portfolio = this.parsePortfolio(this.editPortfolio);
       if (this.editRate) payload.hourly_rate = parseFloat(this.editRate);
+      payload.is_available_for_hire = this.editAvailableForHire;
 
       const updated = await this.api.updateProfile(payload).toPromise();
       if (updated && updated.user) {
@@ -430,6 +448,7 @@ export class FreelancerProfilePage implements OnInit {
         this.rate = updated.user.hourly_rate ? '$' + updated.user.hourly_rate + '/hr' : null;
         this.education = updated.user.education || this.education;
         this.experience = updated.user.experience || this.experience;
+        this.isAvailableForHire = updated.user.is_available_for_hire !== false;
         this.portfolioItems = updated.user.portfolio?.length
           ? updated.user.portfolio.map((item: any, index: number) => ({
               id: index + 1,

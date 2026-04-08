@@ -8,7 +8,7 @@ import os
 import uuid
 from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
-from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog
+from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
@@ -234,6 +234,10 @@ def update_current_user():
         update_data['experience'] = data['experience']
     if 'portfolio' in data:
         update_data['portfolio'] = data['portfolio']
+    if 'is_available_for_hire' in data:
+        if user_doc.get('user_type') != 'freelancer':
+            return jsonify({'error': 'Only freelancers can update availability status'}), 403
+        update_data['is_available_for_hire'] = bool(data['is_available_for_hire'])
     
     if update_data:
         update_data['updated_at'] = datetime.utcnow()
@@ -488,6 +492,20 @@ def apply_for_job(job_id):
     res = Application.collection.insert_one(app_doc)
     new_app = Application.get_by_id(res.inserted_id)
     
+    # Create notification for client
+    client_id = job_doc.get('client_id')
+    freelancer_name = user_doc.get('full_name') or user_doc.get('username')
+    job_title = job_doc.get('title')
+    
+    Notification.create(
+        recipient_id=str(client_id),
+        notification_type='job_application',
+        title='New Job Application',
+        message=f'{freelancer_name} applied for your job: {job_title}',
+        related_id=str(res.inserted_id),
+        related_type='application'
+    )
+    
     return jsonify({
         'message': 'Application submitted successfully',
         'application': Application.to_dict(new_app)
@@ -532,6 +550,45 @@ def accept_application(application_id):
     
     # Update job status
     Job.collection.update_one({'_id': job_doc['_id']}, {'$set': {'status': 'in_progress', 'updated_at': datetime.utcnow()}})
+
+    # Notify freelancer about decision
+    freelancer_id = app_doc.get('freelancer_id')
+    client_doc = User.get_by_id(current_user_id)
+    client_name = (client_doc.get('full_name') or client_doc.get('username')) if client_doc else 'Client'
+    job_title = job_doc.get('title') if job_doc else 'a job'
+    acceptance_message = f'{client_name} accepted your application for: {job_title}'
+    Notification.create(
+        recipient_id=str(freelancer_id),
+        notification_type='application_accepted',
+        title='Application Accepted',
+        message=acceptance_message,
+        related_id=str(app_doc.get('_id')),
+        related_type='application'
+    )
+
+    # Open conversation and seed it with the acceptance message
+    conversation = Conversation.get_or_create(current_user_id, str(freelancer_id))
+    Message.collection.insert_one({
+        'conversation_id': conversation.get('_id'),
+        'sender_id': ObjectId(current_user_id),
+        'text': acceptance_message,
+        'is_read': False,
+        'created_at': datetime.utcnow()
+    })
+    Conversation.collection.update_one(
+        {'_id': conversation.get('_id')},
+        {'$set': {'last_message_at': datetime.utcnow()}}
+    )
+
+    # Extra notification to direct freelancer to the new conversation
+    Notification.create(
+        recipient_id=str(freelancer_id),
+        notification_type='conversation_started',
+        title='Conversation Started',
+        message=f'A conversation with {client_name} has been opened for {job_title}',
+        related_id=str(conversation.get('_id')),
+        related_type='conversation'
+    )
     
     updated_app = Application.get_by_id(application_id)
     
@@ -557,6 +614,20 @@ def reject_application(application_id):
         return jsonify({'error': 'You can only reject applications for your own jobs'}), 403
     
     Application.collection.update_one({'_id': ObjectId(application_id)}, {'$set': {'status': 'rejected'}})
+
+    # Notify freelancer about decision
+    freelancer_id = app_doc.get('freelancer_id')
+    client_doc = User.get_by_id(current_user_id)
+    client_name = (client_doc.get('full_name') or client_doc.get('username')) if client_doc else 'Client'
+    job_title = job_doc.get('title') if job_doc else 'a job'
+    Notification.create(
+        recipient_id=str(freelancer_id),
+        notification_type='application_rejected',
+        title='Application Update',
+        message=f'{client_name} declined your application for: {job_title}',
+        related_id=str(app_doc.get('_id')),
+        related_type='application'
+    )
     
     updated_app = Application.get_by_id(application_id)
     
@@ -575,6 +646,105 @@ def get_my_applications():
     apps_cursor = Application.collection.find({'freelancer_id': ObjectId(current_user_id)}).sort('created_at', -1)
     
     return jsonify([Application.to_dict(app) for app in apps_cursor]), 200
+
+
+# ==================== Notification Routes ====================
+
+@api.route('/notifications', methods=['GET'])
+@jwt_required()
+def get_notifications():
+    """Get notifications for current user (client)."""
+    current_user_id = get_jwt_identity()
+    
+    # Query parameters for pagination
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 20, type=int)
+    unread_only = request.args.get('unread_only', False, type=bool)
+    
+    skip = (page - 1) * limit
+    
+    query = {'recipient_id': ObjectId(current_user_id)}
+    if unread_only:
+        query['is_read'] = False
+    
+    notifications = list(
+        Notification.collection.find(query)
+        .sort('created_at', -1)
+        .skip(skip)
+        .limit(limit)
+    )
+    
+    total_count = Notification.collection.count_documents(query)
+    unread_count = Notification.collection.count_documents({
+        'recipient_id': ObjectId(current_user_id),
+        'is_read': False
+    })
+    
+    return jsonify({
+        'notifications': [Notification.to_dict(notif) for notif in notifications],
+        'total_count': total_count,
+        'unread_count': unread_count,
+        'page': page,
+        'limit': limit
+    }), 200
+
+
+@api.route('/notifications/<notification_id>/read', methods=['PUT'])
+@jwt_required()
+def mark_notification_read(notification_id):
+    """Mark a notification as read."""
+    current_user_id = get_jwt_identity()
+    
+    notif_doc = Notification.get_by_id(notification_id)
+    
+    if not notif_doc:
+        return jsonify({'error': 'Notification not found'}), 404
+    
+    if str(notif_doc.get('recipient_id')) != current_user_id:
+        return jsonify({'error': 'Cannot mark other user notifications as read'}), 403
+    
+    Notification.mark_as_read(notification_id)
+    updated_notif = Notification.get_by_id(notification_id)
+    
+    return jsonify({
+        'message': 'Notification marked as read',
+        'notification': Notification.to_dict(updated_notif)
+    }), 200
+
+
+@api.route('/notifications/read-all', methods=['PUT'])
+@jwt_required()
+def mark_all_notifications_read():
+    """Mark all notifications as read for current user."""
+    current_user_id = get_jwt_identity()
+    
+    Notification.mark_all_as_read(current_user_id)
+    
+    unread_count = Notification.collection.count_documents({
+        'recipient_id': ObjectId(current_user_id),
+        'is_read': False
+    })
+    
+    return jsonify({
+        'message': 'All notifications marked as read',
+        'unread_count': unread_count
+    }), 200
+
+
+@api.route('/notifications/unread-count', methods=['GET'])
+@jwt_required()
+def get_unread_notification_count():
+    """Get count of unread notifications for current user."""
+    current_user_id = get_jwt_identity()
+    
+    unread_count = Notification.collection.count_documents({
+        'recipient_id': ObjectId(current_user_id),
+        'is_read': False
+    })
+    
+    return jsonify({
+        'unread_count': unread_count
+    }), 200
 
 
 # ==================== User Routes ====================
