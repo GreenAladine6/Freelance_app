@@ -4,24 +4,20 @@ import { FormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
+import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
 
 @Component({
-    selector: 'app-create-gig',
-    standalone: true,
-    imports: [CommonModule, FormsModule, IonicModule, BottomNavComponent],
-    template: `
+  selector: 'app-create-gig',
+  standalone: true,
+  imports: [CommonModule, FormsModule, IonicModule, BottomNavComponent],
+  template: `
     <ion-header class="ion-no-border">
       <ion-toolbar>
         <ion-buttons slot="start">
-          <ion-back-button defaultHref="/gigs" icon="arrow-back"></ion-back-button>
+          <ion-back-button [defaultHref]="roleService.role === 'client' ? '/dashboard-client' : '/dashboard'" icon="arrow-back"></ion-back-button>
         </ion-buttons>
-        <ion-title>Create New Service</ion-title>
-        <ion-buttons slot="end">
-          <ion-button (click)="handleSubmit()" class="save-btn">
-            <ion-icon name="save"></ion-icon>
-          </ion-button>
-        </ion-buttons>
+        <ion-title>{{ roleService.role === 'client' ? 'Post Project' : 'Post Service' }}</ion-title>
       </ion-toolbar>
     </ion-header>
 
@@ -29,15 +25,14 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       <div class="form-container">
         <!-- Title -->
         <div class="form-group">
-          <label>Gig Title <span class="required">*</span></label>
-          <input type="text" [(ngModel)]="title" placeholder="e.g., I will design a professional logo" class="custom-input" />
+          <label>{{ roleService.role === 'client' ? 'Project' : 'Service' }} Title <span class="required">*</span></label>
+          <input type="text" [(ngModel)]="title" [placeholder]="roleService.role === 'client' ? 'e.g., Build a React Dashboard' : 'e.g., I will design a professional logo'" class="custom-input" />
         </div>
 
         <!-- Description -->
         <div class="form-group">
           <label>Description <span class="required">*</span></label>
-          <textarea [(ngModel)]="description" placeholder="Describe your service in detail..." class="custom-textarea" rows="5"></textarea>
-          <div class="char-count">{{ description.length }} / 500 characters</div>
+          <textarea [(ngModel)]="description" placeholder="Describe in detail..." class="custom-textarea" rows="5"></textarea>
         </div>
 
         <!-- Category -->
@@ -46,28 +41,34 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
           <div class="select-wrapper">
             <select [(ngModel)]="category" class="custom-select">
               <option value="" disabled selected>Select a category</option>
-              <option value="design">Design & Creative</option>
-              <option value="development">Development & IT</option>
-              <option value="writing">Writing & Translation</option>
-              <option value="marketing">Marketing & Sales</option>
-              <option value="video">Video & Animation</option>
+              <option value="Design">Design & Creative</option>
+              <option value="Development">Development & IT</option>
+              <option value="Writing">Writing & Translation</option>
+              <option value="Templates">Templates & UI Kits</option>
+              <option value="Video">Video & Animation</option>
             </select>
             <ion-icon name="chevron-down" class="select-icon"></ion-icon>
           </div>
         </div>
 
-        <!-- Price -->
+        <!-- Price/Budget -->
         <div class="form-group">
-          <label>Price <span class="required">*</span></label>
+          <label>{{ roleService.role === 'client' ? 'Budget' : 'Price' }} <span class="required">*</span></label>
           <div class="price-wrapper">
             <span class="currency-symbol">$</span>
             <input type="number" [(ngModel)]="price" placeholder="0.00" class="custom-input price-input" />
           </div>
         </div>
 
+        <!-- Image URL -->
+        <div class="form-group">
+          <label>Image URL (Optional)</label>
+          <input type="text" [(ngModel)]="imageUrl" placeholder="https://images.unsplash.com/..." class="custom-input" />
+        </div>
+
         <!-- Tags -->
         <div class="form-group">
-          <label>Tags</label>
+          <label>{{ roleService.role === 'client' ? 'Required Skills' : 'Tags' }}</label>
           <div class="tags-container" *ngIf="tags.length > 0">
             <span class="tag" *ngFor="let tag of tags">
               {{ tag }}
@@ -89,17 +90,16 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       <div class="footer-buttons">
         <button class="submit-btn" [disabled]="loading" (click)="handleSubmit()">
           <ion-spinner *ngIf="loading" name="crescent" class="btn-spinner"></ion-spinner>
-          <span *ngIf="!loading">Submit for Review</span>
+          <span *ngIf="!loading">Submit for Admin Review</span>
         </button>
-        <button class="draft-btn" [disabled]="loading" (click)="handleSaveDraft()">
-          Save as Draft
+        <button class="draft-btn" [disabled]="loading" (click)="handleCancel()">
+          Cancel
         </button>
       </div>
     </ion-footer>
-    
     <app-bottom-nav></app-bottom-nav>
   `,
-    styles: [`
+  styles: [`
     ion-toolbar { --background: white; border-bottom: 1px solid #E5E7EB; }
     ion-title { font-size: 18px; font-weight: 600; color: #111827; }
     .save-btn { --color: #8B5CF6; }
@@ -154,60 +154,80 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
   `]
 })
 export class CreateGigPage {
-    title = '';
-    description = '';
-    category = '';
-    price = '';
-    tags: string[] = ['React', 'Design'];
-    newTag = '';
-    loading = false;
-    error: string | null = null;
+  title = '';
+  description = '';
+  category = '';
+  price = '';
+  imageUrl = '';
+  tags: string[] = [];
+  newTag = '';
+  loading = false;
+  error: string | null = null;
 
-    constructor(private router: Router, private api: ApiService) { }
+  constructor(
+    public router: Router,
+    public api: ApiService,
+    public roleService: RoleService
+  ) { }
 
-    handleAddTag() {
-        if (this.newTag.trim() && !this.tags.includes(this.newTag.trim())) {
-            this.tags.push(this.newTag.trim());
-            this.newTag = '';
-        }
+  handleAddTag() {
+    if (this.newTag.trim() && !this.tags.includes(this.newTag.trim())) {
+      this.tags.push(this.newTag.trim());
+      this.newTag = '';
+    }
+  }
+
+  handleRemoveTag(tagToRemove: string) {
+    this.tags = this.tags.filter(tag => tag !== tagToRemove);
+  }
+
+  handleCancel() {
+    const path = this.roleService.role === 'client' ? '/dashboard-client' : '/dashboard';
+    this.router.navigate([path]);
+  }
+
+  async handleSubmit() {
+    if (!this.title.trim() || !this.description.trim() || !this.price) {
+      this.error = "Title, description, and price are required.";
+      return;
     }
 
-    handleRemoveTag(tagToRemove: string) {
-        this.tags = this.tags.filter(tag => tag !== tagToRemove);
+    const budgetNum = parseFloat(this.price);
+    if (isNaN(budgetNum) || budgetNum <= 0) {
+      this.error = "Please enter a valid price.";
+      return;
     }
 
-    handleSaveDraft() {
-        this.router.navigate(['/gigs']);
+    try {
+      this.loading = true;
+      this.error = null;
+
+      if (this.roleService.role === 'client') {
+        // Post as Job
+        await this.api.createJob({
+          title: this.title.trim(),
+          description: this.description.trim(),
+          budget: budgetNum,
+          skills_required: this.tags.join(", "),
+          duration: this.category || 'Flexible',
+          image_url: this.imageUrl || undefined
+        }).toPromise();
+        this.router.navigate(['/dashboard-client']);
+      } else {
+        // Post as Product (Gig)
+        await this.api.addProduct({
+          name: this.title.trim(),
+          description: this.description.trim(),
+          price: budgetNum,
+          category: this.category || 'General',
+          image_url: this.imageUrl || undefined
+        }).toPromise();
+        this.router.navigate(['/dashboard']);
+      }
+    } catch (err: any) {
+      this.error = err.message || "Failed to submit. Please try again.";
+    } finally {
+      this.loading = false;
     }
-
-    async handleSubmit() {
-        if (!this.title.trim() || !this.description.trim() || !this.price) {
-            this.error = "Title, description, and price are required.";
-            return;
-        }
-
-        const budgetNum = parseFloat(this.price);
-        if (isNaN(budgetNum) || budgetNum <= 0) {
-            this.error = "Please enter a valid price.";
-            return;
-        }
-
-        try {
-            this.loading = true;
-            this.error = null;
-            // Note: accessToken handling should be done via an interceptor or auth service
-            await this.api.createJob({
-                title: this.title.trim(),
-                description: this.description.trim(),
-                budget: budgetNum,
-                skills_required: this.tags.join(", "),
-                duration: this.category || undefined,
-            }).toPromise();
-            this.router.navigate(['/gigs']);
-        } catch (err: any) {
-            this.error = err.message || "Failed to create gig. Please try again.";
-        } finally {
-            this.loading = false;
-        }
-    }
+  }
 }

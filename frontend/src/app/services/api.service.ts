@@ -12,9 +12,11 @@ export interface ApiUser {
     bio?: string;
     skills?: string;
     hourly_rate?: number;
+    avatar_url?: string;
     education?: any[];
     experience?: any[];
     portfolio?: any[];
+    is_available_for_hire?: boolean;
     created_at?: string;
 }
 
@@ -23,6 +25,18 @@ export interface LoginResponse {
     access_token: string;
     refresh_token: string;
     user: ApiUser;
+}
+
+export interface GoogleLoginPayload {
+    token: string;
+}
+
+export interface GoogleLoginResponse {
+    message: string;
+    access_token: string;
+    refresh_token: string;
+    user: ApiUser;
+    is_new_user?: boolean;
 }
 
 export interface RegisterPayload {
@@ -34,6 +48,10 @@ export interface RegisterPayload {
     bio?: string;
     skills?: string;
     hourly_rate?: number;
+    avatar_url?: string;
+    education?: any[];
+    experience?: any[];
+    portfolio?: any[];
 }
 
 export interface ApiJob {
@@ -55,6 +73,7 @@ export interface CreateJobPayload {
     budget: number;
     duration?: string;
     skills_required?: string;
+    image_url?: string;
 }
 
 export interface ApiApplication {
@@ -83,6 +102,7 @@ export interface ApiConversation {
     last_message_at: string;
     other_user: ApiUser;
     last_message: ApiMessage;
+    unread_count?: number;
 }
 
 export interface ApiMessage {
@@ -102,18 +122,42 @@ export interface ApiProduct {
     image_url: string;
     category: string;
     seller_id: string;
+    seller_avatar_url?: string;
     created_at: string;
+}
+
+export interface ApiNotification {
+    id: string;
+    recipient_id: string;
+    notification_type: string;
+    title: string;
+    message: string;
+    related_id?: string;
+    related_type?: string;
+    is_read: boolean;
+    created_at: string;
+}
+
+export interface AvatarUploadResponse {
+    message: string;
+    avatar_url: string;
+    user: ApiUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
     readonly baseUrl = 'http://localhost:5000/api';
+    readonly defaultAvatarUrl = `${this.baseUrl}/uploads/profile-images/default.avif`;
 
     constructor(private http: HttpClient) { }
 
     // ── Auth ──────────────────────────────────────────────
     login(email: string, password: string): Observable<LoginResponse> {
         return this.http.post<LoginResponse>(`${this.baseUrl}/login`, { email, password });
+    }
+
+    loginWithGoogle(token: string): Observable<GoogleLoginResponse> {
+        return this.http.post<GoogleLoginResponse>(`${this.baseUrl}/login-google`, { token });
     }
 
     register(payload: RegisterPayload): Observable<{ message: string; user: ApiUser }> {
@@ -137,6 +181,12 @@ export class ApiService {
 
     getUser(userId: string): Observable<ApiUser> {
         return this.http.get<ApiUser>(`${this.baseUrl}/users/${userId}`);
+    }
+
+    uploadProfileImage(file: File): Observable<AvatarUploadResponse> {
+        const formData = new FormData();
+        formData.append('image', file);
+        return this.http.post<AvatarUploadResponse>(`${this.baseUrl}/me/avatar`, formData);
     }
 
     // ── Jobs ──────────────────────────────────────────────
@@ -200,9 +250,37 @@ export class ApiService {
         return this.http.get<AdminStats>(`${this.baseUrl}/admin/stats`);
     }
 
+    getAdminLogs(): Observable<any[]> {
+        return this.http.get<any[]>(`${this.baseUrl}/admin/logs`);
+    }
+
+    getAdminReports(): Observable<any[]> {
+        return this.http.get<any[]>(`${this.baseUrl}/admin/reports`);
+    }
+
+    updateReportStatus(reportId: string, status: 'resolved' | 'dismissed'): Observable<any> {
+        return this.http.put<any>(`${this.baseUrl}/admin/reports/${reportId}`, { status });
+    }
+
+    getPendingContent(): Observable<{ jobs: any[], products: any[] }> {
+        return this.http.get<{ jobs: any[], products: any[] }>(`${this.baseUrl}/admin/pending`);
+    }
+
+    approveContent(type: 'job' | 'product', id: string): Observable<any> {
+        return this.http.put<any>(`${this.baseUrl}/admin/approve/${type}/${id}`, {});
+    }
+
+    getAnalytics(): Observable<any> {
+        return this.http.get<any>(`${this.baseUrl}/admin/analytics`);
+    }
+
     // ── Chat ──────────────────────────────────────────────
     getConversations(): Observable<ApiConversation[]> {
         return this.http.get<ApiConversation[]>(`${this.baseUrl}/conversations`);
+    }
+
+    getOrCreateConversationWithUser(userId: string): Observable<ApiConversation> {
+        return this.http.get<ApiConversation>(`${this.baseUrl}/conversations/with/${userId}`);
     }
 
     getConversation(conversationId: string): Observable<ApiConversation> {
@@ -217,10 +295,33 @@ export class ApiService {
         return this.http.post<ApiMessage>(`${this.baseUrl}/messages`, payload);
     }
 
+    // ── Notifications ─────────────────────────────────────
+    getNotifications(page: number = 1, limit: number = 20, unreadOnly: boolean = false): Observable<{ notifications: ApiNotification[]; total_count: number; unread_count: number; page: number; limit: number }> {
+        let params = new HttpParams();
+        params = params.set('page', String(page));
+        params = params.set('limit', String(limit));
+        if (unreadOnly) params = params.set('unread_only', 'true');
+        return this.http.get<{ notifications: ApiNotification[]; total_count: number; unread_count: number; page: number; limit: number }>(`${this.baseUrl}/notifications`, { params });
+    }
+
+    getUnreadNotificationCount(): Observable<{ unread_count: number }> {
+        return this.http.get<{ unread_count: number }>(`${this.baseUrl}/notifications/unread-count`);
+    }
+
+    markNotificationAsRead(notificationId: string): Observable<{ message: string; notification: ApiNotification }> {
+        return this.http.put<{ message: string; notification: ApiNotification }>(`${this.baseUrl}/notifications/${notificationId}/read`, {});
+    }
+
+    markAllNotificationsAsRead(): Observable<{ message: string; unread_count: number }> {
+        return this.http.put<{ message: string; unread_count: number }>(`${this.baseUrl}/notifications/read-all`, {});
+    }
+
     // ── Store ─────────────────────────────────────────────
-    getProducts(category?: string): Observable<ApiProduct[]> {
+    getProducts(category?: string, page: number = 1, limit: number = 10): Observable<ApiProduct[]> {
         let params = new HttpParams();
         if (category) params = params.set('category', category);
+        params = params.set('page', String(page));
+        params = params.set('limit', String(limit));
         return this.http.get<ApiProduct[]>(`${this.baseUrl}/products`, { params });
     }
 

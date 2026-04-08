@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { IonicModule } from '@ionic/angular';
 import { Router } from '@angular/router';
+import { ToastController } from '@ionic/angular';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
 
@@ -71,21 +72,21 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         </div>
 
         <div class="actions-card">
-          <button class="action-btn">
+          <button class="action-btn" (click)="showComingSoon('Change Password')">
             <div class="action-label">
               <div class="action-icon icon-blue"><ion-icon name="key"></ion-icon></div>
               <span>Change Password</span>
             </div>
             <ion-icon name="chevron-forward" class="chevron"></ion-icon>
           </button>
-          <button class="action-btn">
+          <button class="action-btn" (click)="goToAdminSection('management')">
             <div class="action-label">
               <div class="action-icon icon-purple"><ion-icon name="settings"></ion-icon></div>
               <span>Admin Settings</span>
             </div>
             <ion-icon name="chevron-forward" class="chevron"></ion-icon>
           </button>
-          <button class="action-btn">
+          <button class="action-btn" (click)="goToAdminSection('overview')">
             <div class="action-label">
               <div class="action-icon icon-orange"><ion-icon name="document-text"></ion-icon></div>
               <span>View Audit Log</span>
@@ -182,7 +183,7 @@ export class ProfileAdminPage {
     { action: "Approved 15 new freelancer applications", time: "4h ago" },
   ];
 
-  constructor(private router: Router, public roleService: RoleService) { }
+  constructor(private router: Router, public roleService: RoleService, private toast: ToastController) { }
 
   goBack() {
     this.router.navigate(['/dashboard-admin']);
@@ -191,5 +192,18 @@ export class ProfileAdminPage {
   handleLogout() {
     this.roleService.logout();
     this.router.navigate(['/login']);
+  }
+
+  goToAdminSection(segment: 'overview' | 'management' | 'moderation' | 'analytics') {
+    this.router.navigate(['/dashboard-admin'], { queryParams: { seg: segment } });
+  }
+
+  async showComingSoon(action: string) {
+    const t = await this.toast.create({
+      message: `${action} will be available soon.`,
+      duration: 2200,
+      color: 'medium'
+    });
+    t.present();
   }
 }
