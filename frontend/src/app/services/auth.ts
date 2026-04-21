@@ -14,6 +14,12 @@ export class AuthService {
     );
   }
 
+  loginWithGoogle(googleToken: string): Observable<any> {
+    return this.api.loginWithGoogle(googleToken).pipe(
+      tap(res => this.role.handleLoginSuccess(res))
+    );
+  }
+
   logout(): void {
     this.role.logout();
   }

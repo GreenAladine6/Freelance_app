@@ -19,8 +19,25 @@ class User:
     collection = db.users
 
     @staticmethod
-    def create(username, email, password, user_type, full_name=None, bio=None, skills=None, hourly_rate=None):
-        password_hash = generate_password_hash(password)
+    def create(
+        username,
+        email,
+        password,
+        user_type,
+        full_name=None,
+        bio=None,
+        skills=None,
+        hourly_rate=None,
+        avatar_url=None,
+        cv_url=None,
+        education=None,
+        experience=None,
+        portfolio=None,
+        is_available_for_hire=None,
+    ):
+        password_hash = generate_password_hash(password) if password else None
+        if is_available_for_hire is None:
+            is_available_for_hire = user_type == 'freelancer'
         user_doc = {
             'username': username,
             'email': email,
@@ -30,9 +47,12 @@ class User:
             'bio': bio,
             'skills': skills,
             'hourly_rate': hourly_rate,
-            'education': [],
-            'experience': [],
-            'portfolio': [],
+            'avatar_url': avatar_url,
+            'cv_url': cv_url,
+            'education': education or [],
+            'experience': experience or [],
+            'portfolio': portfolio or [],
+            'is_available_for_hire': is_available_for_hire,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -56,6 +76,8 @@ class User:
 
     @staticmethod
     def check_password(user_doc, password):
+        if not user_doc.get('password_hash'):
+            return False
         return check_password_hash(user_doc['password_hash'], password)
 
     @staticmethod
@@ -67,6 +89,7 @@ class User:
     def to_dict(user_doc):
         if not user_doc:
             return None
+        is_freelancer = user_doc.get('user_type') == 'freelancer'
         return {
             'id': str(user_doc['_id']),
             'username': user_doc.get('username'),
@@ -76,9 +99,12 @@ class User:
             'bio': user_doc.get('bio'),
             'skills': user_doc.get('skills'),
             'hourly_rate': user_doc.get('hourly_rate'),
+            'avatar_url': user_doc.get('avatar_url'),
+            'cv_url': user_doc.get('cv_url'),
             'education': user_doc.get('education', []),
             'experience': user_doc.get('experience', []),
             'portfolio': user_doc.get('portfolio', []),
+            'is_available_for_hire': user_doc.get('is_available_for_hire', is_freelancer),
             'created_at': user_doc.get('created_at').isoformat() if hasattr(user_doc.get('created_at'), 'isoformat') else user_doc.get('created_at')
         }
 
@@ -116,11 +142,20 @@ class Conversation:
             sort=[('created_at', -1)]
         )
 
+        unread_count = 0
+        if current_user_id:
+            unread_count = Message.collection.count_documents({
+                'conversation_id': doc['_id'],
+                'sender_id': {'$ne': ObjectId(str(current_user_id))},
+                'is_read': False
+            })
+
         return {
             'id': str(doc['_id']),
             'last_message_at': doc.get('last_message_at').isoformat() if hasattr(doc.get('last_message_at'), 'isoformat') else None,
             'other_user': User.to_dict(other_user) if other_user else None,
-            'last_message': Message.to_dict(last_msg) if last_msg else None
+            'last_message': Message.to_dict(last_msg) if last_msg else None,
+            'unread_count': unread_count
         }
 
 class Message:
@@ -144,6 +179,8 @@ class Product:
     @staticmethod
     def to_dict(doc):
         if not doc: return None
+        seller_id = doc.get('seller_id')
+        seller = User.get_by_id(seller_id) if seller_id else None
         return {
             'id': str(doc['_id']),
             'name': doc.get('name'),
@@ -151,38 +188,10 @@ class Product:
             'price': doc.get('price'),
             'image_url': doc.get('image_url'),
             'category': doc.get('category'),
-            'seller_id': str(doc.get('seller_id')),
+            'seller_id': str(seller_id),
+            'seller_avatar_url': seller.get('avatar_url') if seller else None,
+            'is_approved': doc.get('is_approved', False),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
-        }
-
-class Job:
-    collection = db.jobs
-
-    @staticmethod
-    def get_by_id(job_id):
-        try:
-            return Job.collection.find_one({'_id': ObjectId(job_id)})
-        except:
-            return None
-
-    @staticmethod
-    def to_dict(job_doc):
-        if not job_doc: return None
-        client_id = job_doc.get('client_id')
-        client = User.get_by_id(client_id) if client_id else None
-        return {
-            'id': str(job_doc['_id']),
-            'title': job_doc.get('title'),
-            'description': job_doc.get('description'),
-            'budget': job_doc.get('budget'),
-            'duration': job_doc.get('duration'),
-            'skills_required': job_doc.get('skills_required'),
-            'client_id': str(client_id) if client_id else None,
-            'client_name': (client.get('full_name') or client.get('username')) if client else None,
-            'status': job_doc.get('status', 'open'),
-            'created_at': job_doc.get('created_at').isoformat() if hasattr(job_doc.get('created_at'), 'isoformat') else None,
-            'updated_at': job_doc.get('updated_at').isoformat() if hasattr(job_doc.get('updated_at'), 'isoformat') else None,
-            'application_count': Application.collection.count_documents({'job_id': job_doc['_id']})
         }
 
 class Application:
@@ -209,4 +218,211 @@ class Application:
             'proposed_rate': app_doc.get('proposed_rate'),
             'status': app_doc.get('status', 'pending'),
             'created_at': app_doc.get('created_at').isoformat() if hasattr(app_doc.get('created_at'), 'isoformat') else None
+        }
+
+class Job:
+    collection = db.jobs
+
+    @staticmethod
+    def get_by_id(job_id):
+        try:
+            return Job.collection.find_one({'_id': ObjectId(job_id)})
+        except:
+            return None
+
+    @staticmethod
+    def to_dict(job_doc):
+        if not job_doc: return None
+        client_id = job_doc.get('client_id')
+        client = User.get_by_id(client_id) if client_id else None
+        return {
+            'id': str(job_doc['_id']),
+            'title': job_doc.get('title'),
+            'description': job_doc.get('description'),
+            'budget': job_doc.get('budget'),
+            'duration': job_doc.get('duration'),
+            'skills_required': job_doc.get('skills_required'),
+            'image_url': job_doc.get('image_url'),
+            'client_id': str(client_id) if client_id else None,
+            'client_name': (client.get('full_name') or client.get('username')) if client else None,
+            'client_avatar_url': client.get('avatar_url') if client else None,
+            'status': job_doc.get('status', 'open'),
+            'is_approved': job_doc.get('is_approved', False),
+            'created_at': job_doc.get('created_at').isoformat() if hasattr(job_doc.get('created_at'), 'isoformat') else None,
+            'updated_at': job_doc.get('updated_at').isoformat() if hasattr(job_doc.get('updated_at'), 'isoformat') else None,
+            'application_count': Application.collection.count_documents({'job_id': job_doc['_id']})
+        }
+
+class AdminLog:
+    collection = db.admin_logs
+
+    @staticmethod
+    def create(admin_id, action, details=None):
+        log_doc = {
+            'admin_id': ObjectId(admin_id),
+            'action': action,
+            'details': details,
+            'created_at': datetime.utcnow()
+        }
+        AdminLog.collection.insert_one(log_doc)
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc: return None
+        return {
+            'id': str(doc['_id']),
+            'admin_id': str(doc.get('admin_id')),
+            'action': doc.get('action'),
+            'details': doc.get('details'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+class Report:
+    collection = db.reports
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc: return None
+        return {
+            'id': str(doc['_id']),
+            'reporter_id': str(doc.get('reporter_id')),
+            'reason': doc.get('reason'),
+            'target_type': doc.get('target_type'),
+            'target_id': str(doc.get('target_id')),
+            'status': doc.get('status', 'pending'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+
+class ProfileUpdateLog:
+    collection = db.profile_update_logs
+
+    @staticmethod
+    def create(user_id, changed_fields):
+        log_doc = {
+            'user_id': ObjectId(user_id),
+            'changed_fields': changed_fields,
+            'created_at': datetime.utcnow()
+        }
+        ProfileUpdateLog.collection.insert_one(log_doc)
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        return {
+            'id': str(doc.get('_id')),
+            'user_id': str(doc.get('user_id')) if doc.get('user_id') else None,
+            'changed_fields': doc.get('changed_fields', []),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+
+class Notification:
+    collection = db.notifications
+
+    @staticmethod
+    def create(recipient_id, notification_type, title, message, related_id=None, related_type=None):
+        """Create a new notification for a user."""
+        notif_doc = {
+            'recipient_id': ObjectId(recipient_id),
+            'notification_type': notification_type,  # e.g., 'job_application', 'message', etc.
+            'title': title,
+            'message': message,
+            'related_id': ObjectId(related_id) if related_id else None,
+            'related_type': related_type,  # e.g., 'application', 'job', 'user', etc.
+            'is_read': False,
+            'created_at': datetime.utcnow()
+        }
+        res = Notification.collection.insert_one(notif_doc)
+        return Notification.get_by_id(res.inserted_id)
+
+    @staticmethod
+    def get_by_id(notif_id):
+        try:
+            return Notification.collection.find_one({'_id': ObjectId(notif_id)})
+        except:
+            return None
+
+    @staticmethod
+    def mark_as_read(notif_id):
+        """Mark a notification as read."""
+        try:
+            Notification.collection.update_one(
+                {'_id': ObjectId(notif_id)},
+                {'$set': {'is_read': True}}
+            )
+            return True
+        except:
+            return False
+
+    @staticmethod
+    def mark_all_as_read(recipient_id):
+        """Mark all notifications for a user as read."""
+        try:
+            Notification.collection.update_many(
+                {'recipient_id': ObjectId(recipient_id), 'is_read': False},
+                {'$set': {'is_read': True}}
+            )
+            return True
+        except:
+            return False
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        return {
+            'id': str(doc['_id']),
+            'recipient_id': str(doc.get('recipient_id')) if doc.get('recipient_id') else None,
+            'notification_type': doc.get('notification_type'),
+            'title': doc.get('title'),
+            'message': doc.get('message'),
+            'related_id': str(doc.get('related_id')) if doc.get('related_id') else None,
+            'related_type': doc.get('related_type'),
+            'is_read': doc.get('is_read', False),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+class Review:
+    collection = db.reviews
+
+    @staticmethod
+    def create(freelancer_id, reviewer_id, rating, comment):
+        review_doc = {
+            'freelancer_id': ObjectId(freelancer_id),
+            'reviewer_id': ObjectId(reviewer_id),
+            'rating': int(rating),
+            'comment': comment,
+            'created_at': datetime.utcnow()
+        }
+        res = Review.collection.insert_one(review_doc)
+        return Review.collection.find_one({'_id': res.inserted_id})
+
+    @staticmethod
+    def get_by_freelancer(freelancer_id):
+        return Review.collection.find({'freelancer_id': ObjectId(freelancer_id)}).sort('created_at', -1)
+
+    @staticmethod
+    def update(review_id, rating, comment):
+        Review.collection.update_one(
+            {'_id': ObjectId(review_id)},
+            {'$set': {'rating': int(rating), 'comment': comment, 'updated_at': datetime.utcnow()}}
+        )
+        return Review.collection.find_one({'_id': ObjectId(review_id)})
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        reviewer = User.get_by_id(doc.get('reviewer_id'))
+        return {
+            'id': str(doc['_id']),
+            'freelancer_id': str(doc.get('freelancer_id')),
+            'reviewer_id': str(doc.get('reviewer_id')),
+            'reviewer_name': (reviewer.get('full_name') or reviewer.get('username')) if reviewer else 'Anonymous',
+            'reviewer_avatar_url': reviewer.get('avatar_url') if reviewer else None,
+            'rating': doc.get('rating'),
+            'comment': doc.get('comment'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }

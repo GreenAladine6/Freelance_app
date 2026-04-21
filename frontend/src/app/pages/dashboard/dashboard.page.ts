@@ -5,27 +5,25 @@ import { IonicModule } from '@ionic/angular';
 import { ApiService, ApiApplication } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
+import { NotificationBadgeComponent } from '../../components/notification-badge/notification-badge.component';
 
 @Component({
     selector: 'app-dashboard',
     standalone: true,
-    imports: [CommonModule, IonicModule, BottomNavComponent],
+    imports: [CommonModule, IonicModule, BottomNavComponent, NotificationBadgeComponent],
     template: `
     <ion-content class="dashboard-content">
       <div class="page-wrap">
         <!-- Header -->
         <header class="app-bar">
-          <div class="user-info" (click)="router.navigate(['/profile'])">
-            <img src="https://i.pravatar.cc/150?u=me" class="avatar" alt="Profile">
+          <div class="user-info" (click)="router.navigate(['/freelancer-profile'])">
+            <img [src]="currentAvatar" class="avatar" alt="Profile">
             <div>
               <p class="welcome-text">Welcome back,</p>
               <h2 class="user-name">{{roleService.userName}}</h2>
             </div>
           </div>
-          <button class="notif-btn">
-            <ion-icon name="notifications-outline"></ion-icon>
-            <span class="notif-dot"></span>
-          </button>
+          <app-notification-badge></app-notification-badge>
         </header>
 
         <!-- Stats Grid -->
@@ -46,7 +44,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
             <button class="chip filled" (click)="router.navigate(['/create-gig'])">Create New Gig</button>
             <button class="chip" (click)="router.navigate(['/browse'])">Browse Projects</button>
             <button class="chip" (click)="router.navigate(['/gigs'])">My Gigs</button>
-            <button class="chip" (click)="router.navigate(['/profile'])">Portfolio</button>
+            <button class="chip" (click)="router.navigate(['/freelancer-profile'])">Portfolio</button>
           </div>
         </section>
 
@@ -145,6 +143,10 @@ export class DashboardPage implements OnInit {
     applications: ApiApplication[] = [];
     loading = false;
     apps: any[] = [];
+
+  get currentAvatar() {
+      return this.roleService.user?.avatar_url || this.api.defaultAvatarUrl;
+  }
 
     get stats() {
         const apps = this.applications;

@@ -5,28 +5,26 @@ import { IonicModule } from '@ionic/angular';
 import { ApiService, ApiUser, ApiJob } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
+import { NotificationBadgeComponent } from '../../components/notification-badge/notification-badge.component';
 
 const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'Business'];
 
 @Component({
   selector: 'app-dashboard-client',
   standalone: true,
-  imports: [CommonModule, IonicModule, BottomNavComponent],
+  imports: [CommonModule, IonicModule, BottomNavComponent, NotificationBadgeComponent],
   template: `
     <ion-content class="client-content">
       <div class="page-wrap">
         <!-- Header -->
         <header class="app-bar">
           <div class="user-row">
-            <img src="https://i.pravatar.cc/150?u=client" class="avatar" (click)="router.navigate(['/profile-client'])" alt="Profile">
+            <img [src]="currentAvatar" class="avatar" (click)="router.navigate(['/profile-client'])" alt="Profile">
             <h2 class="greeting">Hi, {{firstName}} 👋</h2>
           </div>
           <div class="icons">
             <button class="icon-btn"><ion-icon name="search-outline"></ion-icon></button>
-            <button class="icon-btn">
-              <ion-icon name="notifications-outline"></ion-icon>
-              <span class="dot"></span>
-            </button>
+            <app-notification-badge></app-notification-badge>
           </div>
         </header>
 
@@ -64,7 +62,7 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
           </div>
           <div class="freelancer-scroll">
             <div class="freelancer-card" *ngFor="let f of freelancers" (click)="router.navigate(['/freelancer-profile', f.id])">
-              <img [src]="'https://i.pravatar.cc/150?u=' + f.id" [alt]="f.full_name || f.username">
+              <img [src]="f.avatar_url || api.defaultAvatarUrl" [alt]="f.full_name || f.username">
               <p class="f-name">{{f.full_name || f.username}}</p>
               <p class="f-skill">{{(f.skills ? f.skills.split(',')[0] : 'Freelancer')}}</p>
               <div class="f-rating">
@@ -83,7 +81,7 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
         <section class="section">
           <h3 class="section-title">Popular Services</h3>
           <div class="services-grid">
-            <div class="service-card" *ngFor="let s of services">
+            <div class="service-card" *ngFor="let s of services" (click)="router.navigate(['/store'])">
               <img [src]="s.img" [alt]="s.title">
               <div class="service-info">
                 <p class="service-title">{{s.title}}</p>
@@ -123,9 +121,9 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
     }
     .search-row {
       display: flex; align-items: center; gap: 8px;
-      background: white; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
+      background: #ffffff !important; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
       ion-icon { color: #9CA3AF; font-size: 16px; }
-      input { flex: 1; border: none; outline: none; font-size: 13px; color: #374151; }
+      input { flex: 1; border: none; outline: none; font-size: 13px; color: #111827 !important; background: transparent !important; }
     }
     .chip-scroll { display: flex; gap: 8px; overflow-x: auto; }
     .cat-chip {
@@ -174,12 +172,13 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
 export class DashboardClientPage implements OnInit {
   freelancers: ApiUser[] = [];
   myJobs: ApiJob[] = [];
+  services: any[] = [];
   loading = false;
   categories = CATEGORIES;
-  services = [
-    { title: 'SaaS Design', price: 'from $200', img: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=300' },
-    { title: 'React Mobile App', price: 'from $800', img: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=300' },
-  ];
+
+  get currentAvatar() {
+    return this.roleService.user?.avatar_url || this.api.defaultAvatarUrl;
+  }
 
   get firstName() { return this.roleService.userName.split(' ')[0]; }
   get stats() {
@@ -190,13 +189,24 @@ export class DashboardClientPage implements OnInit {
     ];
   }
 
-  constructor(public router: Router, public roleService: RoleService, private api: ApiService) { }
+  constructor(public router: Router, public roleService: RoleService, public api: ApiService) { }
 
   ngOnInit() {
+    this.loadData();
+  }
+
+  loadData() {
     this.loading = true;
     Promise.all([
       this.api.getFreelancers().toPromise().then(fl => { this.freelancers = (fl || []).slice(0, 5); }).catch(() => { }),
-      this.api.getMyJobs().toPromise().then(jobs => { this.myJobs = jobs || []; }).catch(() => { })
+      this.api.getMyJobs().toPromise().then(jobs => { this.myJobs = jobs || []; }).catch(() => { }),
+      this.api.getProducts().toPromise().then(prods => {
+        this.services = (prods || []).slice(0, 4).map(p => ({
+          title: p.name,
+          price: 'from $' + p.price,
+          img: p.image_url || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=300'
+        }));
+      }).catch(() => { })
     ]).finally(() => { this.loading = false; });
   }
 }

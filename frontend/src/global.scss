@@ -35,3 +35,12 @@
 /* @import "@ionic/angular/css/palettes/dark.always.css"; */
 /* @import "@ionic/angular/css/palettes/dark.class.css"; */
 @import "@ionic/angular/css/palettes/dark.system.css";
+
+/* Global overrides for common UI elements */
+ion-back-button {
+  --color: #8b5cf6 !important;
+  color: #8b5cf6 !important;
+  opacity: 1 !important;
+  --icon-font-size: 28px !important;
+  font-weight: bold;
+}
