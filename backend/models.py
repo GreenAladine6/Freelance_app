@@ -29,6 +29,7 @@ class User:
         skills=None,
         hourly_rate=None,
         avatar_url=None,
+        cv_url=None,
         education=None,
         experience=None,
         portfolio=None,
@@ -47,6 +48,7 @@ class User:
             'skills': skills,
             'hourly_rate': hourly_rate,
             'avatar_url': avatar_url,
+            'cv_url': cv_url,
             'education': education or [],
             'experience': experience or [],
             'portfolio': portfolio or [],
@@ -98,6 +100,7 @@ class User:
             'skills': user_doc.get('skills'),
             'hourly_rate': user_doc.get('hourly_rate'),
             'avatar_url': user_doc.get('avatar_url'),
+            'cv_url': user_doc.get('cv_url'),
             'education': user_doc.get('education', []),
             'experience': user_doc.get('experience', []),
             'portfolio': user_doc.get('portfolio', []),
@@ -378,5 +381,48 @@ class Notification:
             'related_id': str(doc.get('related_id')) if doc.get('related_id') else None,
             'related_type': doc.get('related_type'),
             'is_read': doc.get('is_read', False),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }
+
+class Review:
+    collection = db.reviews
+
+    @staticmethod
+    def create(freelancer_id, reviewer_id, rating, comment):
+        review_doc = {
+            'freelancer_id': ObjectId(freelancer_id),
+            'reviewer_id': ObjectId(reviewer_id),
+            'rating': int(rating),
+            'comment': comment,
+            'created_at': datetime.utcnow()
+        }
+        res = Review.collection.insert_one(review_doc)
+        return Review.collection.find_one({'_id': res.inserted_id})
+
+    @staticmethod
+    def get_by_freelancer(freelancer_id):
+        return Review.collection.find({'freelancer_id': ObjectId(freelancer_id)}).sort('created_at', -1)
+
+    @staticmethod
+    def update(review_id, rating, comment):
+        Review.collection.update_one(
+            {'_id': ObjectId(review_id)},
+            {'$set': {'rating': int(rating), 'comment': comment, 'updated_at': datetime.utcnow()}}
+        )
+        return Review.collection.find_one({'_id': ObjectId(review_id)})
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        reviewer = User.get_by_id(doc.get('reviewer_id'))
+        return {
+            'id': str(doc['_id']),
+            'freelancer_id': str(doc.get('freelancer_id')),
+            'reviewer_id': str(doc.get('reviewer_id')),
+            'reviewer_name': (reviewer.get('full_name') or reviewer.get('username')) if reviewer else 'Anonymous',
+            'reviewer_avatar_url': reviewer.get('avatar_url') if reviewer else None,
+            'rating': doc.get('rating'),
+            'comment': doc.get('comment'),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }

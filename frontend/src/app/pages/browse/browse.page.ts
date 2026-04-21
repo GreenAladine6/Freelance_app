@@ -44,7 +44,7 @@ import { RoleService } from '../../services/role.service';
         <div class="section">
           <h2 class="section-title">Marketplace Services</h2>
           <div class="horizontal-scroll" *ngIf="services.length > 0">
-            <div *ngFor="let item of services.slice(0, 5)" class="service-card" (click)="handleInteraction()">
+            <div *ngFor="let item of services.slice(0, 5)" class="service-card" (click)="goToStore()">
               <div class="image-wrapper">
                 <img [src]="item.image" [alt]="item.title" />
                 <button class="bookmark-btn"><ion-icon name="bookmark-outline"></ion-icon></button>
@@ -70,7 +70,7 @@ import { RoleService } from '../../services/role.service';
         <div class="section">
           <h2 class="section-title">Top Rated</h2>
           <div class="vertical-list">
-            <div *ngFor="let item of services.slice(5)" class="popular-card" (click)="handleInteraction()">
+            <div *ngFor="let item of services.slice(5)" class="popular-card" (click)="goToStore()">
               <div class="image-wrapper">
                 <img [src]="item.image" [alt]="item.title" />
               </div>
@@ -92,7 +92,7 @@ import { RoleService } from '../../services/role.service';
       <!-- Freelancers Tab -->
       <div *ngIf="activeTab === 'Freelancers'" class="tab-content">
         <p class="count-text">{{ freelancers.length }} freelancers available</p>
-        <div *ngFor="let f of freelancers" class="freelancer-card" (click)="handleInteraction()">
+        <div *ngFor="let f of freelancers" class="freelancer-card" (click)="goToFreelancerProfile(f)">
           <div class="card-header">
             <div class="avatar-wrapper">
               <img [src]="f.avatar" class="avatar" />
@@ -354,6 +354,14 @@ export class BrowsePage implements OnInit {
 
   handleInteraction() {
     if (!this.roleService.isAuthenticated) {
+      this.showLoginPrompt = true;
+    }
+  }
+
+  goToStore() {
+    if (this.roleService.isAuthenticated) {
+      this.router.navigate(['/store']);
+    } else {
       this.showLoginPrompt = true;
     }
   }

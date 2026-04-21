@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, interval } from 'rxjs';
-import { startWith, switchMap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, interval, of } from 'rxjs';
+import { catchError, startWith, switchMap, tap } from 'rxjs/operators';
 import { ApiService, ApiNotification } from './api.service';
+import { RoleService } from './role.service';
 
 @Injectable({
   providedIn: 'root'
@@ -16,7 +17,16 @@ export class NotificationService {
   private currentPage = 1;
   private pageSize = 20;
 
-  constructor(private apiService: ApiService) {
+  constructor(private apiService: ApiService, private roleService: RoleService) {
+    this.roleService.accessToken$.subscribe(token => {
+      if (!token) {
+        this.unreadCountSubject.next(0);
+        this.notificationsSubject.next([]);
+        return;
+      }
+      this.refreshUnreadCount();
+    });
+
     this.startPolling();
   }
 
@@ -25,7 +35,15 @@ export class NotificationService {
     interval(30000)
       .pipe(
         startWith(0),
-        switchMap(() => this.apiService.getUnreadNotificationCount())
+        switchMap(() => {
+          if (!this.roleService.isAuthenticated) {
+            return of({ unread_count: 0 });
+          }
+
+          return this.apiService.getUnreadNotificationCount().pipe(
+            catchError(() => of({ unread_count: this.unreadCountSubject.value }))
+          );
+        })
       )
       .subscribe(response => {
         this.unreadCountSubject.next(response.unread_count);
@@ -40,7 +58,13 @@ export class NotificationService {
     page: number;
     limit: number;
   }> {
-    return this.apiService.getNotifications(page, limit, false);
+    return this.apiService.getNotifications(page, limit, false).pipe(
+      tap(response => {
+        this.unreadCountSubject.next(response.unread_count);
+        this.notificationsSubject.next(response.notifications);
+        this.currentPage = page;
+      })
+    );
   }
 
   // Get only unread notifications
@@ -51,7 +75,12 @@ export class NotificationService {
     page: number;
     limit: number;
   }> {
-    return this.apiService.getNotifications(1, 100, true);
+    return this.apiService.getNotifications(1, 100, true).pipe(
+      tap(response => {
+        this.unreadCountSubject.next(response.unread_count);
+        this.notificationsSubject.next(response.notifications);
+      })
+    );
   }
 
   // Get unread count
@@ -71,7 +100,14 @@ export class NotificationService {
 
   // Refresh unread count
   refreshUnreadCount(): void {
-    this.apiService.getUnreadNotificationCount().subscribe(response => {
+    if (!this.roleService.isAuthenticated) {
+      this.unreadCountSubject.next(0);
+      return;
+    }
+
+    this.apiService.getUnreadNotificationCount().pipe(
+      catchError(() => of({ unread_count: this.unreadCountSubject.value }))
+    ).subscribe(response => {
       this.unreadCountSubject.next(response.unread_count);
     });
   }

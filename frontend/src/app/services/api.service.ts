@@ -13,6 +13,7 @@ export interface ApiUser {
     skills?: string;
     hourly_rate?: number;
     avatar_url?: string;
+    cv_url?: string;
     education?: any[];
     experience?: any[];
     portfolio?: any[];
@@ -138,9 +139,26 @@ export interface ApiNotification {
     created_at: string;
 }
 
+export interface ApiReview {
+    id: string;
+    freelancer_id: string;
+    reviewer_id: string;
+    reviewer_name: string;
+    reviewer_avatar_url?: string;
+    rating: number;
+    comment: string;
+    created_at: string;
+}
+
 export interface AvatarUploadResponse {
     message: string;
     avatar_url: string;
+    user: ApiUser;
+}
+
+export interface CvUploadResponse {
+    message: string;
+    cv_url: string;
     user: ApiUser;
 }
 
@@ -187,6 +205,12 @@ export class ApiService {
         const formData = new FormData();
         formData.append('image', file);
         return this.http.post<AvatarUploadResponse>(`${this.baseUrl}/me/avatar`, formData);
+    }
+
+    uploadCv(file: File): Observable<CvUploadResponse> {
+        const formData = new FormData();
+        formData.append('cv', file);
+        return this.http.post<CvUploadResponse>(`${this.baseUrl}/me/cv`, formData);
     }
 
     // ── Jobs ──────────────────────────────────────────────
@@ -243,6 +267,18 @@ export class ApiService {
         let httpParams = new HttpParams();
         if (skills) httpParams = httpParams.set('skills', skills);
         return this.http.get<ApiUser[]>(`${this.baseUrl}/freelancers`, { params: httpParams });
+    }
+
+    getFreelancerReviews(userId: string): Observable<{ reviews: ApiReview[], can_review: boolean }> {
+        return this.http.get<{ reviews: ApiReview[], can_review: boolean }>(`${this.baseUrl}/users/${userId}/reviews`);
+    }
+
+    addReview(freelancerId: string, payload: { rating: number; comment: string }): Observable<{ message: string; review: ApiReview }> {
+        return this.http.post<{ message: string; review: ApiReview }>(`${this.baseUrl}/users/${freelancerId}/reviews`, payload);
+    }
+
+    editReview(reviewId: string, payload: { rating: number; comment: string }): Observable<{ message: string; review: ApiReview }> {
+        return this.http.put<{ message: string; review: ApiReview }>(`${this.baseUrl}/reviews/${reviewId}`, payload);
     }
 
     // ── Admin ─────────────────────────────────────────────
@@ -327,6 +363,10 @@ export class ApiService {
 
     addProduct(payload: any): Observable<ApiProduct> {
         return this.http.post<ApiProduct>(`${this.baseUrl}/products`, payload);
+    }
+
+    purchaseProducts(payload: { product_ids: string[]; buyer_name: string }): Observable<any> {
+        return this.http.post<any>(`${this.baseUrl}/products/purchase`, payload);
     }
 
     // ── Health ────────────────────────────────────────────

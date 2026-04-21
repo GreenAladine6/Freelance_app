@@ -81,7 +81,7 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
         <section class="section">
           <h3 class="section-title">Popular Services</h3>
           <div class="services-grid">
-            <div class="service-card" *ngFor="let s of services">
+            <div class="service-card" *ngFor="let s of services" (click)="router.navigate(['/store'])">
               <img [src]="s.img" [alt]="s.title">
               <div class="service-info">
                 <p class="service-title">{{s.title}}</p>
@@ -121,9 +121,9 @@ const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'B
     }
     .search-row {
       display: flex; align-items: center; gap: 8px;
-      background: white; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
+      background: #ffffff !important; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
       ion-icon { color: #9CA3AF; font-size: 16px; }
-      input { flex: 1; border: none; outline: none; font-size: 13px; color: #374151; }
+      input { flex: 1; border: none; outline: none; font-size: 13px; color: #111827 !important; background: transparent !important; }
     }
     .chip-scroll { display: flex; gap: 8px; overflow-x: auto; }
     .cat-chip {

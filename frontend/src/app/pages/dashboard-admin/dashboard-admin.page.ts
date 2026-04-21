@@ -6,12 +6,13 @@ import { IonicModule } from '@ionic/angular';
 import { ApiService, AdminStats } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
+import { NotificationBadgeComponent } from '../../components/notification-badge/notification-badge.component';
 import { ToastController } from '@ionic/angular';
 
 @Component({
   selector: 'app-dashboard-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule, IonicModule, BottomNavComponent],
+  imports: [CommonModule, FormsModule, IonicModule, BottomNavComponent, NotificationBadgeComponent],
   template: `
     <ion-content class="admin-content">
       <div class="glass-header">
@@ -21,10 +22,7 @@ import { ToastController } from '@ionic/angular';
             <h1 class="dashboard-title">Dashboard</h1>
           </div>
           <div class="header-actions">
-            <ion-button fill="clear" class="notif-btn">
-              <ion-icon name="notifications-outline" slot="icon-only"></ion-icon>
-              <div class="badge-dot"></div>
-            </ion-button>
+            <app-notification-badge></app-notification-badge>
             <div class="admin-avatar">AD</div>
           </div>
         </div>
@@ -248,11 +246,23 @@ import { ToastController } from '@ionic/angular';
     }
 
     .admin-content {
-      --background: var(--bg-color);
+      --background: #F8FAFC !important;
+      color: #1E293B !important;
+    }
+    ion-card {
+      --background: #ffffff !important;
+      --color: #1E293B !important;
+    }
+    ion-card-title {
+      color: #1E293B !important;
+    }
+    ion-card-subtitle {
+      color: #64748B !important;
     }
 
     .glass-header {
-      background: linear-gradient(135deg, var(--primary-purple), var(--light-purple));
+      background: #7B2FBE;
+      background: linear-gradient(135deg, #7B2FBE, #9B59D0);
       padding: 30px 20px 20px;
       border-radius: 0 0 30px 30px;
       margin-bottom: 10px;
@@ -267,14 +277,15 @@ import { ToastController } from '@ionic/angular';
     }
 
     .welcome-text {
-      color: rgba(255, 255, 255, 0.8);
+      color: #ffffff;
+      opacity: 0.9;
       font-size: 14px;
       font-weight: 500;
       letter-spacing: 0.5px;
     }
 
     .dashboard-title {
-      color: white;
+      color: #ffffff;
       margin: 0;
       font-size: 24px;
       font-weight: 800;
@@ -336,9 +347,9 @@ import { ToastController } from '@ionic/angular';
 
     .sub-segment {
       margin-bottom: 15px;
-      --background: white;
+      --background: #ffffff !important;
       border-radius: 10px;
-      ion-segment-button { font-size: 12px; font-weight: 700; }
+      ion-segment-button { font-size: 12px; font-weight: 700; --color: #64748B !important; --color-checked: #1E293B !important; }
     }
 
     .content-wrapper {
@@ -388,7 +399,7 @@ import { ToastController } from '@ionic/angular';
     }
 
     .stat-card-mini {
-      background: white;
+      background: #ffffff !important;
       padding: 15px 10px;
       border-radius: 16px;
       display: flex;
@@ -398,8 +409,8 @@ import { ToastController } from '@ionic/angular';
       box-shadow: 0 4px 12px rgba(0,0,0,0.03);
       border: 1px solid #F1F5F9;
 
-      .mini-val { font-weight: 800; font-size: 16px; color: var(--text-dark); }
-      .mini-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+      .mini-val { font-weight: 800; font-size: 16px; color: #1E293B !important; }
+      .mini-lbl { font-size: 10px; color: #64748B !important; font-weight: 600; text-transform: uppercase; }
     }
 
     .section-header {
@@ -408,12 +419,12 @@ import { ToastController } from '@ionic/angular';
       align-items: center;
       margin: 25px 0 15px;
 
-      h2 { font-size: 18px; font-weight: 700; color: var(--text-dark); margin: 0; }
+      h2 { font-size: 18px; font-weight: 700; color: #1E293B !important; margin: 0; }
       ion-button { --color: var(--primary-purple); font-weight: 600; }
     }
 
     .logs-container {
-      background: white;
+      background: #ffffff !important;
       border-radius: 20px;
       padding: 5px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.03);
@@ -436,12 +447,12 @@ import { ToastController } from '@ionic/angular';
         &.danger { background: #EF4444; }
       }
 
-      .log-action { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-dark); }
+      .log-action { margin: 0; font-size: 14px; font-weight: 600; color: #1E293B !important; }
       .log-meta { 
         display: flex; gap: 10px; align-items: center; margin-top: 2px;
-        span { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+        span { font-size: 11px; color: #64748B !important; display: flex; align-items: center; gap: 4px; }
       }
-      .log-details { font-style: italic; background: #F8FAFC; padding: 2px 6px; border-radius: 4px; }
+      .log-details { font-style: italic; background: #F8FAFC; padding: 2px 6px; border-radius: 4px; color: #64748B !important; }
     }
 
     .management-grid {
@@ -451,7 +462,7 @@ import { ToastController } from '@ionic/angular';
     }
 
     .manage-item {
-      background: white;
+      background: #ffffff !important;
       padding: 20px;
       border-radius: 20px;
       box-shadow: 0 8px 20px rgba(0,0,0,0.04);
@@ -471,12 +482,13 @@ import { ToastController } from '@ionic/angular';
         ion-icon { font-size: 24px; }
       }
 
-      h3 { margin: 0 0 5px; font-size: 16px; font-weight: 700; color: var(--text-dark); }
-      p { margin: 0 10px 0 0; font-size: 13px; color: var(--text-muted); line-height: 1.4; }
+      h3 { margin: 0 0 5px; font-size: 16px; font-weight: 700; color: #1E293B !important; }
+      p { margin: 0 10px 0 0; font-size: 13px; color: #64748B !important; line-height: 1.4; }
       ion-button { margin-left: -8px; --padding-start: 8px; font-weight: 700; font-size: 13px; }
     }
 
     .report-card, .content-card {
+      background: #ffffff !important;
       margin: 0 0 15px;
       border-radius: 18px;
       box-shadow: 0 6px 15px rgba(0,0,0,0.05);
@@ -491,8 +503,8 @@ import { ToastController } from '@ionic/angular';
         margin-bottom: 10px;
       }
 
-      .report-date { font-size: 11px; color: var(--text-muted); }
-      .id-tag { background: #F1F5F9; padding: 2px 6px; border-radius: 6px; font-size: 12px; }
+      .report-date { font-size: 11px; color: #64748B !important; }
+      .id-tag { background: #F1F5F9; padding: 2px 6px; border-radius: 6px; font-size: 12px; color: #1E293B !important; }
 
       .report-actions {
         display: flex;
@@ -501,11 +513,11 @@ import { ToastController } from '@ionic/angular';
         ion-button { flex: 1; font-weight: 700; --border-radius: 10px; }
       }
 
-      .description { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin: 0; }
+      .description { font-size: 13px; color: #64748B !important; line-height: 1.5; margin: 0; }
     }
 
     .analytics-card {
-      background: white;
+      background: #ffffff !important;
       padding: 20px;
       border-radius: 20px;
       margin-bottom: 20px;
@@ -514,8 +526,8 @@ import { ToastController } from '@ionic/angular';
 
     .chart-header {
       margin-bottom: 20px;
-      h3 { margin: 0; font-size: 16px; font-weight: 700; }
-      p { margin: 0; font-size: 12px; color: var(--text-muted); }
+      h3 { margin: 0; font-size: 16px; font-weight: 700; color: #1E293B !important; }
+      p { margin: 0; font-size: 12px; color: #64748B !important; }
     }
 
     .bar-chart {
@@ -553,7 +565,7 @@ import { ToastController } from '@ionic/angular';
     }
 
     .mini-analytic {
-      background: white;
+      background: #ffffff !important;
       padding: 15px;
       border-radius: 18px;
       display: flex;
@@ -561,7 +573,7 @@ import { ToastController } from '@ionic/angular';
       align-items: center;
       gap: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-      h4 { margin: 0; font-size: 12px; font-weight: 700; text-align: center; color: var(--text-muted); }
+      h4 { margin: 0; font-size: 12px; font-weight: 700; text-align: center; color: #64748B !important; }
     }
 
     .circle-chart {
@@ -569,11 +581,12 @@ import { ToastController } from '@ionic/angular';
       border: 5px solid #F1F5F9; border-top-color: var(--primary-purple);
       display: flex; align-items: center; justify-content: center;
       font-weight: 800; font-size: 14px;
+      color: #1E293B !important;
       &.green { border-top-color: #10B981; }
     }
 
     .skills-list {
-      background: white;
+      background: #ffffff !important;
       padding: 15px;
       border-radius: 20px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.03);
@@ -586,8 +599,8 @@ import { ToastController } from '@ionic/angular';
 
     .skill-info {
       display: flex; justify-content: space-between; margin-bottom: 6px;
-      .skill-name { font-weight: 700; font-size: 13px; }
-      .skill-count { font-size: 12px; color: var(--text-muted); }
+      .skill-name { font-weight: 700; font-size: 13px; color: #1E293B !important; }
+      .skill-count { font-size: 12px; color: #64748B !important; }
     }
 
     .skill-bar { height: 6px; background: #F1F5F9; border-radius: 10px; overflow: hidden; }
@@ -607,7 +620,7 @@ import { ToastController } from '@ionic/angular';
         border-radius: 50%; display: flex; align-items: center; justify-content: center;
         ion-icon { font-size: 40px; color: #10B981; }
       }
-      h3 { margin: 0; font-size: 18px; font-weight: 700; }
+      h3 { margin: 0; font-size: 18px; font-weight: 700; color: #1E293B !important; }
     }
 
     .fade-in { animation: fadeIn 0.4s ease-out; }

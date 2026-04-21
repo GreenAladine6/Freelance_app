@@ -8,7 +8,7 @@ import os
 import uuid
 from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
-from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification
+from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification, Review
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
@@ -16,7 +16,9 @@ api = Blueprint('api', __name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads', 'profile_images')
+CV_UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads', 'cvs')
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+ALLOWED_CV_EXTENSIONS = {'.pdf'}
 DEFAULT_PROFILE_AVATAR = 'default.avif'
 
 
@@ -25,8 +27,39 @@ def _is_allowed_image(filename):
     return ext in ALLOWED_IMAGE_EXTENSIONS
 
 
+def _is_allowed_cv(filename):
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_CV_EXTENSIONS
+
+
 def _default_avatar_url():
     return f"{request.host_url.rstrip('/')}/api/uploads/profile-images/{DEFAULT_PROFILE_AVATAR}"
+
+
+def _parse_bool_query_param(value, default=False):
+    """Parse a truthy/falsy query parameter safely from string values."""
+    if value is None:
+        return default
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _notify_admins(notification_type, title, message, related_id=None, related_type=None, exclude_user_id=None):
+    """Send a notification to all admin users."""
+    admins_cursor = User.collection.find({'user_type': 'admin'}, {'_id': 1})
+    excluded = str(exclude_user_id) if exclude_user_id else None
+
+    for admin in admins_cursor:
+        admin_id = str(admin.get('_id'))
+        if excluded and admin_id == excluded:
+            continue
+        Notification.create(
+            recipient_id=admin_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            related_id=related_id,
+            related_type=related_type
+        )
 
 
 def _user_response(user_doc):
@@ -300,11 +333,66 @@ def upload_profile_avatar():
     }), 200
 
 
+@api.route('/me/cv', methods=['POST'])
+@jwt_required()
+def upload_profile_cv():
+    """Upload current freelancer CV (PDF only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+
+    if not user_doc:
+        return jsonify({'error': 'User not found'}), 404
+
+    if user_doc.get('user_type') != 'freelancer':
+        return jsonify({'error': 'Only freelancers can upload a CV'}), 403
+
+    if 'cv' not in request.files:
+        return jsonify({'error': 'CV file is required'}), 400
+
+    cv_file = request.files['cv']
+    if not cv_file or not cv_file.filename:
+        return jsonify({'error': 'CV file is required'}), 400
+
+    if not _is_allowed_cv(cv_file.filename):
+        return jsonify({'error': 'Only PDF files are allowed'}), 400
+
+    os.makedirs(CV_UPLOAD_DIR, exist_ok=True)
+
+    filename = f"{current_user_id}_{uuid.uuid4().hex}.pdf"
+    filepath = os.path.join(CV_UPLOAD_DIR, filename)
+    cv_file.save(filepath)
+
+    cv_url = f"{request.host_url.rstrip('/')}/api/uploads/cvs/{filename}"
+
+    User.collection.update_one(
+        {'_id': ObjectId(current_user_id)},
+        {'$set': {'cv_url': cv_url, 'updated_at': datetime.utcnow()}}
+    )
+    ProfileUpdateLog.create(current_user_id, ['cv_url'])
+
+    updated_user = User.get_by_id(current_user_id)
+    return jsonify({
+        'message': 'CV uploaded successfully',
+        'cv_url': cv_url,
+        'user': _user_response(updated_user)
+    }), 200
+
+
 @api.route('/uploads/profile-images/<path:filename>', methods=['GET'])
 def get_profile_image(filename):
     """Serve uploaded profile images."""
     os.makedirs(PROFILE_UPLOAD_DIR, exist_ok=True)
     return send_from_directory(PROFILE_UPLOAD_DIR, filename)
+
+
+@api.route('/uploads/cvs/<path:filename>', methods=['GET'])
+def get_uploaded_cv(filename):
+    """Serve uploaded freelancer CV files (PDF only)."""
+    if not _is_allowed_cv(filename):
+        return jsonify({'error': 'File not found'}), 404
+
+    os.makedirs(CV_UPLOAD_DIR, exist_ok=True)
+    return send_from_directory(CV_UPLOAD_DIR, filename, mimetype='application/pdf')
 
 
 # ==================== Job Routes ====================
@@ -372,6 +460,15 @@ def create_job():
     
     res = Job.collection.insert_one(job_doc)
     new_job = Job.get_by_id(res.inserted_id)
+
+    client_name = user_doc.get('full_name') or user_doc.get('username') or 'Client'
+    _notify_admins(
+        notification_type='job_pending_approval',
+        title='Job Approval Needed',
+        message=f'New job "{job_doc["title"]}" from {client_name} awaits approval',
+        related_id=str(res.inserted_id),
+        related_type='job'
+    )
     
     return jsonify({
         'message': 'Job posted successfully and is pending admin approval',
@@ -655,15 +752,27 @@ def get_my_applications():
 def get_notifications():
     """Get notifications for current user (client)."""
     current_user_id = get_jwt_identity()
+
+    try:
+        recipient_object_id = ObjectId(current_user_id)
+    except Exception:
+        return jsonify({'error': 'Invalid user identity'}), 400
     
     # Query parameters for pagination
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 20, type=int)
-    unread_only = request.args.get('unread_only', False, type=bool)
+    unread_only = _parse_bool_query_param(request.args.get('unread_only'))
+
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 20
+    if limit > 100:
+        limit = 100
     
     skip = (page - 1) * limit
     
-    query = {'recipient_id': ObjectId(current_user_id)}
+    query = {'recipient_id': recipient_object_id}
     if unread_only:
         query['is_read'] = False
     
@@ -676,7 +785,7 @@ def get_notifications():
     
     total_count = Notification.collection.count_documents(query)
     unread_count = Notification.collection.count_documents({
-        'recipient_id': ObjectId(current_user_id),
+        'recipient_id': recipient_object_id,
         'is_read': False
     })
     
@@ -717,11 +826,16 @@ def mark_notification_read(notification_id):
 def mark_all_notifications_read():
     """Mark all notifications as read for current user."""
     current_user_id = get_jwt_identity()
+
+    try:
+        recipient_object_id = ObjectId(current_user_id)
+    except Exception:
+        return jsonify({'error': 'Invalid user identity'}), 400
     
     Notification.mark_all_as_read(current_user_id)
     
     unread_count = Notification.collection.count_documents({
-        'recipient_id': ObjectId(current_user_id),
+        'recipient_id': recipient_object_id,
         'is_read': False
     })
     
@@ -736,9 +850,14 @@ def mark_all_notifications_read():
 def get_unread_notification_count():
     """Get count of unread notifications for current user."""
     current_user_id = get_jwt_identity()
+
+    try:
+        recipient_object_id = ObjectId(current_user_id)
+    except Exception:
+        return jsonify({'error': 'Invalid user identity'}), 400
     
     unread_count = Notification.collection.count_documents({
-        'recipient_id': ObjectId(current_user_id),
+        'recipient_id': recipient_object_id,
         'is_read': False
     })
     
@@ -845,8 +964,23 @@ def update_report_status(report_id):
     if status not in ['resolved', 'dismissed']:
         return jsonify({'error': 'Invalid status'}), 400
 
+    report_doc = Report.collection.find_one({'_id': ObjectId(report_id)})
+    if not report_doc:
+        return jsonify({'error': 'Report not found'}), 404
+
     Report.collection.update_one({'_id': ObjectId(report_id)}, {'$set': {'status': status}})
     AdminLog.create(current_user_id, f"Report {status}", details=f"Report ID: {report_id}")
+
+    reporter_id = report_doc.get('reporter_id')
+    if reporter_id and str(reporter_id) != current_user_id:
+        Notification.create(
+            recipient_id=str(reporter_id),
+            notification_type='report_update',
+            title='Report Updated',
+            message=f'Your report has been marked as {status}',
+            related_id=report_id,
+            related_type='report'
+        )
     
     return jsonify({'message': f'Report {status} successfully'}), 200
 
@@ -879,16 +1013,43 @@ def approve_content(content_type, content_id):
         return jsonify({'error': 'Admin access required'}), 403
 
     if content_type == 'job':
+        content_doc = Job.get_by_id(content_id)
+        if not content_doc:
+            return jsonify({'error': 'Content not found or already approved'}), 404
+
         res = Job.collection.update_one({'_id': ObjectId(content_id)}, {'$set': {'is_approved': True}})
         action = "Approved Job"
+        owner_id = content_doc.get('client_id')
+        notification_type = 'job_approved'
+        notification_title = 'Job Approved'
+        notification_message = f'Your job "{content_doc.get("title") or "Untitled Job"}" is now live'
     elif content_type == 'product':
+        content_doc = Product.collection.find_one({'_id': ObjectId(content_id)})
+        if not content_doc:
+            return jsonify({'error': 'Content not found or already approved'}), 404
+
         res = Product.collection.update_one({'_id': ObjectId(content_id)}, {'$set': {'is_approved': True}})
         action = "Approved Product"
+        owner_id = content_doc.get('seller_id')
+        notification_type = 'product_approved'
+        notification_title = 'Product Approved'
+        notification_message = f'Your product "{content_doc.get("name") or "Untitled Product"}" is now live'
     else:
         return jsonify({'error': 'Invalid content type'}), 400
 
     if res.modified_count:
         AdminLog.create(current_user_id, f"{action} #{content_id}")
+
+        if owner_id and str(owner_id) != current_user_id:
+            Notification.create(
+                recipient_id=str(owner_id),
+                notification_type=notification_type,
+                title=notification_title,
+                message=notification_message,
+                related_id=content_id,
+                related_type=content_type
+            )
+
         return jsonify({'message': f'{content_type} approved successfully'}), 200
     
     return jsonify({'error': 'Content not found or already approved'}), 404
@@ -997,7 +1158,19 @@ def send_message():
         
     if conversation_id:
         conv = Conversation.collection.find_one({'_id': ObjectId(conversation_id)})
+        if not conv:
+            return jsonify({'error': 'Conversation not found'}), 404
+
+        if ObjectId(current_user_id) not in conv.get('participants', []):
+            return jsonify({'error': 'Conversation not found or access denied'}), 404
     elif recipient_id:
+        recipient_doc = User.get_by_id(recipient_id)
+        if not recipient_doc:
+            return jsonify({'error': 'Recipient not found'}), 404
+
+        if recipient_id == current_user_id:
+            return jsonify({'error': 'Cannot send a message to yourself'}), 400
+
         conv = Conversation.get_or_create(current_user_id, recipient_id)
     else:
         return jsonify({'error': 'Recipient or conversation ID required'}), 400
@@ -1015,6 +1188,28 @@ def send_message():
         {'_id': conv['_id']},
         {'$set': {'last_message_at': datetime.utcnow()}}
     )
+
+    recipient_notification_id = None
+    if recipient_id and recipient_id != current_user_id:
+        recipient_notification_id = recipient_id
+    else:
+        for participant in conv.get('participants', []):
+            participant_id = str(participant)
+            if participant_id != current_user_id:
+                recipient_notification_id = participant_id
+                break
+
+    if recipient_notification_id:
+        sender_doc = User.get_by_id(current_user_id)
+        sender_name = (sender_doc.get('full_name') or sender_doc.get('username')) if sender_doc else 'Someone'
+        Notification.create(
+            recipient_id=recipient_notification_id,
+            notification_type='message',
+            title='New Message',
+            message=f'{sender_name} sent you a message',
+            related_id=str(conv['_id']),
+            related_type='conversation'
+        )
     
     return jsonify(Message.to_dict(Message.collection.find_one({'_id': res.inserted_id}))), 201
 
@@ -1060,10 +1255,214 @@ def add_product():
     }
     
     res = Product.collection.insert_one(product_doc)
+
+    creator_doc = User.get_by_id(current_user_id)
+    creator_name = (creator_doc.get('full_name') or creator_doc.get('username')) if creator_doc else 'User'
+    _notify_admins(
+        notification_type='product_pending_approval',
+        title='Product Approval Needed',
+        message=f'New product "{product_doc.get("name") or "Untitled Product"}" from {creator_name} awaits approval',
+        related_id=str(res.inserted_id),
+        related_type='product',
+        exclude_user_id=current_user_id
+    )
+
     return jsonify({
         'message': 'Product added and is pending admin approval',
         'product': Product.to_dict(Product.collection.find_one({'_id': res.inserted_id}))
     }), 201
+
+@api.route('/products/purchase', methods=['POST'])
+@jwt_required(optional=True)
+def purchase_products():
+    """Simulate purchasing products and notify sellers."""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    product_ids = data.get('product_ids', [])
+    buyer_name = data.get('buyer_name', 'A client')
+
+    if current_user_id:
+        buyer_doc = User.get_by_id(current_user_id)
+        if buyer_doc:
+            buyer_name = buyer_doc.get('full_name') or buyer_doc.get('username') or buyer_name
+
+    purchased_items = []
+    
+    for pid in product_ids:
+        try:
+            prod = Product.collection.find_one({'_id': ObjectId(pid)})
+            if prod and prod.get('seller_id'):
+                seller_id = str(prod.get('seller_id'))
+                # Notify the freelancer/seller
+                Notification.create(
+                    recipient_id=seller_id,
+                    notification_type='service_purchased',
+                    title='Service Purchased!',
+                    message=f'{buyer_name} purchased your service: {prod.get("name")}',
+                    related_id=pid,
+                    related_type='product'
+                )
+                purchased_items.append(pid)
+        except Exception:
+            pass
+            
+    return jsonify({'message': 'Purchase successful', 'purchased_count': len(purchased_items)}), 200
+
+# ==================== Review Routes ====================
+
+@api.route('/users/<user_id>/reviews', methods=['POST'])
+@jwt_required()
+def add_review(user_id):
+    """Add a review for a freelancer (client only)."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    
+    if not user_doc or user_doc.get('user_type') != 'client':
+        return jsonify({'error': 'Only clients can leave reviews'}), 403
+
+    freelancer = User.get_by_id(user_id)
+    if not freelancer or freelancer.get('user_type') != 'freelancer':
+        return jsonify({'error': 'Target user is not a valid freelancer'}), 404
+
+    # Verify that the client has an accepted application for this freelancer OR an open conversation
+    can_review = False
+    
+    client_job_docs = Job.collection.find({'client_id': ObjectId(current_user_id)}, {'_id': 1})
+    client_job_ids = [job['_id'] for job in client_job_docs]
+    if client_job_ids:
+        accepted_app = Application.collection.find_one({
+            'freelancer_id': ObjectId(user_id),
+            'job_id': {'$in': client_job_ids},
+            'status': 'accepted'
+        })
+        if accepted_app:
+            can_review = True
+
+    if not can_review:
+        conv = Conversation.collection.find_one({
+            'participants': {'$all': [ObjectId(current_user_id), ObjectId(user_id)]}
+        })
+        if conv:
+            can_review = True
+
+    if not can_review:
+        return jsonify({'error': 'You can only review freelancers you have interacted with.'}), 403
+
+    data = request.get_json()
+    rating = data.get('rating')
+    comment = data.get('comment', '')
+    
+    try:
+        rating = int(rating)
+        if rating < 1 or rating > 5:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Valid rating between 1 and 5 is required'}), 400
+        
+    review_doc = Review.create(
+        freelancer_id=user_id,
+        reviewer_id=current_user_id,
+        rating=rating,
+        comment=comment
+    )
+    
+    reviewer_name = user_doc.get('full_name') or user_doc.get('username') or 'A client'
+    Notification.create(
+        recipient_id=str(user_id),
+        notification_type='new_review',
+        title='New Review Received',
+        message=f'{reviewer_name} left you a {rating}-star review.',
+        related_id=str(review_doc.get('_id')),
+        related_type='review'
+    )
+    
+    return jsonify({
+        'message': 'Review added successfully',
+        'review': Review.to_dict(review_doc)
+    }), 201
+
+
+@api.route('/reviews/<review_id>', methods=['PUT'])
+@jwt_required()
+def edit_review(review_id):
+    """Edit an existing review."""
+    current_user_id = get_jwt_identity()
+    user_doc = User.get_by_id(current_user_id)
+    
+    if not user_doc:
+        return jsonify({'error': 'User not found'}), 404
+
+    try:
+        from bson import ObjectId
+        review_doc = Review.collection.find_one({'_id': ObjectId(review_id)})
+    except Exception:
+        return jsonify({'error': 'Invalid review ID'}), 400
+
+    if not review_doc:
+        return jsonify({'error': 'Review not found'}), 404
+
+    if str(review_doc.get('reviewer_id')) != str(current_user_id):
+        return jsonify({'error': 'You can only edit your own reviews'}), 403
+
+    data = request.get_json()
+    rating = data.get('rating')
+    comment = data.get('comment', '')
+
+    if rating is not None:
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 5:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Valid rating between 1 and 5 is required'}), 400
+    else:
+        rating = review_doc.get('rating')
+
+    updated_review = Review.update(review_id, rating, comment)
+    return jsonify({
+        'message': 'Review updated successfully',
+        'review': Review.to_dict(updated_review)
+    }), 200
+
+
+@api.route('/users/<user_id>/reviews', methods=['GET'])
+@jwt_required(optional=True)
+def get_user_reviews(user_id):
+    """Get all reviews for a freelancer and evaluate permissions."""
+    current_user_id = get_jwt_identity()
+    freelancer = User.get_by_id(user_id)
+    if not freelancer:
+        return jsonify({'error': 'Freelancer not found'}), 404
+        
+    reviews_cursor = Review.get_by_freelancer(user_id)
+    reviews_list = [Review.to_dict(r) for r in reviews_cursor]
+    
+    can_review = False
+    if current_user_id:
+        user_doc = User.get_by_id(current_user_id)
+        if user_doc and user_doc.get('user_type') == 'client':
+            client_job_docs = Job.collection.find({'client_id': ObjectId(current_user_id)}, {'_id': 1})
+            client_job_ids = [job['_id'] for job in client_job_docs]
+            if client_job_ids:
+                accepted_app = Application.collection.find_one({
+                    'freelancer_id': ObjectId(user_id),
+                    'job_id': {'$in': client_job_ids},
+                    'status': 'accepted'
+                })
+                if accepted_app:
+                    can_review = True
+            
+            if not can_review:
+                conv = Conversation.collection.find_one({
+                    'participants': {'$all': [ObjectId(current_user_id), ObjectId(user_id)]}
+                })
+                if conv:
+                    can_review = True
+                    
+    return jsonify({
+        'reviews': reviews_list,
+        'can_review': can_review
+    }), 200
 
 # ==================== Health Check ====================
 

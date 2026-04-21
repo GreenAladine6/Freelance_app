@@ -33,8 +33,8 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
             <span class="role-badge">Freelancer</span>
             <div class="rating-badge">
               <ion-icon name="star"></ion-icon>
-              <span>4.9</span>
-              <span class="text-muted">(124 reviews)</span>
+              <span>{{ averageRating > 0 ? (averageRating | number:'1.1-1') : 'New' }}</span>
+              <span class="text-muted" *ngIf="reviews.length > 0">({{ reviews.length }} reviews)</span>
             </div>
           </div>
           <div class="hero-meta">
@@ -93,6 +93,17 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         </div>
 
         <div class="section-card">
+          <h3>CV (PDF)</h3>
+          <a *ngIf="cvUrl" [href]="cvUrl" target="_blank" rel="noopener noreferrer" class="cv-link-btn">
+            <ion-icon name="document-text-outline"></ion-icon>
+            View CV
+          </a>
+          <p *ngIf="!cvUrl" class="empty-text body-text">
+            {{ isOwnProfile ? 'No CV uploaded yet. Add one from Edit Profile.' : 'This freelancer has not uploaded a CV yet.' }}
+          </p>
+        </div>
+
+        <div class="section-card">
           <h3>Skills</h3>
           <div class="skills-container" *ngIf="skills.length > 0; else noSkills">
             <span *ngFor="let skill of skills" class="skill-tag">{{ skill }}</span>
@@ -117,6 +128,66 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
           </div>
           <ng-template #noPortfolio>
             <p class="empty-text body-text">No portfolio projects yet.</p>
+          </ng-template>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h3>Reviews & Ratings</h3>
+          </div>
+          
+          <div *ngIf="!isOwnProfile && canReview" class="leave-review-box">
+            <h4>Leave a Review</h4>
+            <div class="form-group mb">
+              <label>Rating</label>
+              <div class="star-rating-select">
+                <ion-icon [name]="reviewRating >= 1 ? 'star' : 'star-outline'" (click)="reviewRating = 1"></ion-icon>
+                <ion-icon [name]="reviewRating >= 2 ? 'star' : 'star-outline'" (click)="reviewRating = 2"></ion-icon>
+                <ion-icon [name]="reviewRating >= 3 ? 'star' : 'star-outline'" (click)="reviewRating = 3"></ion-icon>
+                <ion-icon [name]="reviewRating >= 4 ? 'star' : 'star-outline'" (click)="reviewRating = 4"></ion-icon>
+                <ion-icon [name]="reviewRating >= 5 ? 'star' : 'star-outline'" (click)="reviewRating = 5"></ion-icon>
+                <span>{{reviewRating}}/5</span>
+              </div>
+            </div>
+            <div class="form-group mb">
+              <label>Comment</label>
+              <textarea [(ngModel)]="reviewText" class="custom-textarea" rows="3" placeholder="Describe your experience..."></textarea>
+            </div>
+            <button class="submit-review-btn" [disabled]="submittingReview || !reviewText.trim()" (click)="submitReview()">
+              {{ submittingReview ? 'Submitting...' : 'Submit Review' }}
+            </button>
+          </div>
+
+          <div *ngIf="reviews.length > 0; else noReviews" class="review-list">
+            <div *ngFor="let rev of reviews" class="review-item">
+              <div class="review-header">
+                <img [src]="rev.reviewer_avatar_url || defaultAvatar" alt="Reviewer" class="reviewer-avatar" />
+                <div class="reviewer-info">
+                  <span class="reviewer-name">{{ rev.reviewer_name }}</span>
+                  <div class="reviewer-stars" *ngIf="editingReviewId !== rev.id">
+                    <ion-icon name="star" *ngFor="let str of getStars(rev.rating)"></ion-icon>
+                  </div>
+                  <div class="star-rating-select-sm" *ngIf="editingReviewId === rev.id">
+                    <ion-icon [name]="editReviewRating >= 1 ? 'star' : 'star-outline'" (click)="editReviewRating = 1"></ion-icon>
+                    <ion-icon [name]="editReviewRating >= 2 ? 'star' : 'star-outline'" (click)="editReviewRating = 2"></ion-icon>
+                    <ion-icon [name]="editReviewRating >= 3 ? 'star' : 'star-outline'" (click)="editReviewRating = 3"></ion-icon>
+                    <ion-icon [name]="editReviewRating >= 4 ? 'star' : 'star-outline'" (click)="editReviewRating = 4"></ion-icon>
+                    <ion-icon [name]="editReviewRating >= 5 ? 'star' : 'star-outline'" (click)="editReviewRating = 5"></ion-icon>
+                  </div>
+                </div>
+                <div class="review-actions-opts" *ngIf="roleService.user?.id === rev.reviewer_id">
+                  <button class="edit-review-btn" *ngIf="editingReviewId !== rev.id" (click)="startEditReview(rev)">Edit</button>
+                  <button class="save-review-btn" *ngIf="editingReviewId === rev.id" [disabled]="submittingReview" (click)="saveEditReview(rev)">Save</button>
+                  <button class="cancel-review-btn" *ngIf="editingReviewId === rev.id" (click)="cancelEditReview()">Cancel</button>
+                </div>
+                <span class="review-date" *ngIf="editingReviewId !== rev.id">{{ rev.created_at | date:'mediumDate' }}</span>
+              </div>
+              <p class="review-comment" *ngIf="editingReviewId !== rev.id">{{ rev.comment }}</p>
+              <textarea *ngIf="editingReviewId === rev.id" [(ngModel)]="editReviewText" class="custom-textarea edit-review-ta" rows="2"></textarea>
+            </div>
+          </div>
+          <ng-template #noReviews>
+            <p class="empty-text body-text">No reviews yet.</p>
           </ng-template>
         </div>
 
@@ -177,6 +248,11 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       <div class="form-group mb-lg">
         <label>Upload Profile Image</label>
         <input type="file" accept="image/*" (change)="onAvatarFileSelected($event)" class="custom-input file-input" />
+      </div>
+      <div class="form-group mb-lg">
+        <label>Upload CV (PDF only)</label>
+        <input type="file" accept=".pdf,application/pdf" (change)="onCvFileSelected($event)" class="custom-input file-input" />
+        <a *ngIf="cvUrl" [href]="cvUrl" target="_blank" rel="noopener noreferrer" class="current-cv-link">View current CV</a>
       </div>
       
       <p class="save-msg" *ngIf="saveMsg">{{ saveMsg }}</p>
@@ -249,6 +325,19 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .cv-item { margin-bottom: 12px; }
     .cv-title { font-size: 13px; font-weight: 700; color: #1c3341; margin: 0 0 2px; }
     .cv-subtitle { font-size: 11px; font-weight: 600; color: #647481; margin: 0 0 4px; }
+    .cv-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: #edf5f7;
+      border: 1px solid #d9e7ed;
+      color: #255165;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+    }
     .empty-text { font-style: italic; color: #80909c; }
     .body-text { font-size: 12px; color: #3b4e5a; line-height: 1.6; margin: 0; }
     .skills-container { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -285,15 +374,48 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .toggle-group { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .toggle-label-wrap { flex: 1; }
     .toggle-label-wrap p { margin: 4px 0 0; font-size: 11px; color: #6b7280; }
-    .custom-input, .custom-textarea { width: 100%; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px 16px; font-size: 14px; outline: none; }
+    .custom-input, .custom-textarea { width: 100%; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px 16px; font-size: 14px; outline: none; color: #111827 !important; }
     .custom-input:focus, .custom-textarea:focus { border-color: #0f6d94; box-shadow: 0 0 0 2px rgba(15, 109, 148, 0.15); }
-    .custom-textarea { resize: none; }
-    .file-input { padding: 9px 10px; background: #f9fafb; }
+    .custom-textarea { resize: none; color: #111827 !important; }
+    .file-input { padding: 9px 10px; background: #f9fafb; color: #111827 !important; }
+    .current-cv-link {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0f6d94;
+      text-decoration: none;
+    }
     .mb { margin-bottom: 16px; }
     .mb-lg { margin-bottom: 24px; }
     .save-msg { font-size: 12px; font-weight: 500; color: #16A34A; margin: 0 0 12px; }
     .save-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #0f6d94, #148469); color: white; border-radius: 9999px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; }
     .save-btn:disabled { opacity: 0.6; }
+
+    .leave-review-box { background: #f9fbfc; border: 1px solid #edf3f6; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+    .leave-review-box h4 { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: #122531; }
+    .star-rating-select { display: flex; align-items: center; gap: 4px; font-size: 24px; color: #caba00; cursor: pointer; }
+    .star-rating-select span { font-size: 12px; font-weight: 700; color: #6b7f8c; margin-left: 8px; cursor: default; }
+    .submit-review-btn { background: #0f6d94; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .submit-review-btn:disabled { opacity: 0.5; }
+    .review-list { display: flex; flex-direction: column; gap: 16px; }
+    .review-item { padding-bottom: 16px; border-bottom: 1px solid #edf3f6; }
+    .review-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .review-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .reviewer-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+    .reviewer-info { flex: 1; }
+    .reviewer-name { font-size: 13px; font-weight: 700; color: #122531; display: block; }
+    .reviewer-stars { color: #c77b00; font-size: 12px; display: flex; gap: 2px; }
+    .review-date { font-size: 11px; color: #80909c; }
+    .review-comment { font-size: 12px; color: #3b4e5a; margin: 0; line-height: 1.5; }
+    
+    .star-rating-select-sm { display: flex; gap: 2px; color: #FACC15; font-size: 14px; margin-top: 2px; cursor: pointer; }
+    .review-actions-opts { display: flex; gap: 6px; margin-left: auto; margin-right: 8px; }
+    .edit-review-btn, .save-review-btn, .cancel-review-btn { background: transparent; border: none; font-size: 11px; font-weight: 700; cursor: pointer; }
+    .edit-review-btn { color: #8B5CF6; }
+    .save-review-btn { color: #10B981; }
+    .cancel-review-btn { color: #EF4444; }
+    .edit-review-ta { margin-top: 8px; font-size: 12px; padding: 8px; }
 
     @media (max-width: 370px) {
       .content-sections { padding-left: 12px; padding-right: 12px; }
@@ -305,6 +427,7 @@ export class FreelancerProfilePage implements OnInit {
   displayName = 'Freelancer';
   bio = 'Expert UI/UX Designer & Full-stack Developer with over 5 years of experience.';
   profileImage = '';
+  cvUrl = '';
   selectedAvatarPreview = '';
   defaultAvatar = 'http://localhost:5000/api/uploads/profile-images/default.avif';
   skills: string[] = [];
@@ -328,11 +451,22 @@ export class FreelancerProfilePage implements OnInit {
   isOwnProfile = true;
   isAvailableForHire = true;
   editAvailableForHire = true;
+  
+  reviews: any[] = [];
+  averageRating = 0;
+  reviewText = '';
+  reviewRating = 5;
+  canReview = false;
+  submittingReview = false;
+  freelancerId: string | null = null;
+  editingReviewId: string | null = null;
+  editReviewRating = 5;
+  editReviewText = '';
 
   constructor(
     private router: Router,
     private route: ActivatedRoute,
-    private roleService: RoleService,
+    public roleService: RoleService,
     private api: ApiService
   ) { }
 
@@ -344,6 +478,7 @@ export class FreelancerProfilePage implements OnInit {
     const id = this.route.snapshot.paramMap.get('id');
     let currentUser = this.roleService.user;
     this.selectedAvatarPreview = '';
+    this.cvUrl = '';
 
     if (!currentUser) {
       try {
@@ -356,7 +491,7 @@ export class FreelancerProfilePage implements OnInit {
       }
     }
 
-    if (id && currentUser && id !== currentUser.id) {
+    if (id && (!currentUser || id !== currentUser.id)) {
       this.isOwnProfile = false;
       try {
         const u = await this.api.getUser(id).toPromise();
@@ -364,6 +499,7 @@ export class FreelancerProfilePage implements OnInit {
           this.displayName = u.full_name || u.username || 'User';
           this.bio = u.bio || 'No bio provided.';
           this.profileImage = u.avatar_url || '';
+          this.cvUrl = u.cv_url || '';
           this.skills = u.skills ? u.skills.split(',').map(s => s.trim()) : [];
           this.rate = u.hourly_rate ? '$' + u.hourly_rate + '/hr' : null;
           this.education = u.education || [];
@@ -377,12 +513,19 @@ export class FreelancerProfilePage implements OnInit {
         this.displayName = currentUser.full_name || currentUser.username || 'User';
         this.bio = currentUser.bio || 'Add a bio to your profile...';
         this.profileImage = currentUser.avatar_url || '';
+        this.cvUrl = currentUser.cv_url || '';
         this.skills = currentUser.skills ? currentUser.skills.split(',').map(s => s.trim()) : [];
         this.rate = currentUser.hourly_rate ? '$' + currentUser.hourly_rate + '/hr' : 'Negotiable';
         this.education = currentUser.education || [];
         this.experience = currentUser.experience || [];
         this.isAvailableForHire = currentUser.is_available_for_hire !== false;
       }
+    }
+    
+    this.freelancerId = id || (currentUser ? currentUser.id : null);
+    
+    if (this.freelancerId) {
+      this.fetchReviews(this.freelancerId);
     }
   }
 
@@ -444,6 +587,7 @@ export class FreelancerProfilePage implements OnInit {
         this.displayName = updated.user.full_name || this.displayName;
         this.bio = updated.user.bio || this.bio;
         this.profileImage = updated.user.avatar_url || '';
+        this.cvUrl = updated.user.cv_url || this.cvUrl;
         this.skills = updated.user.skills ? updated.user.skills.split(',').map((skill: string) => skill.trim()) : this.skills;
         this.rate = updated.user.hourly_rate ? '$' + updated.user.hourly_rate + '/hr' : null;
         this.education = updated.user.education || this.education;
@@ -494,6 +638,36 @@ export class FreelancerProfilePage implements OnInit {
     }
   }
 
+  async onCvFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      this.saveMsg = 'Only PDF files are allowed for CV.';
+      input.value = '';
+      return;
+    }
+
+    try {
+      this.saving = true;
+      this.saveMsg = '';
+      const uploaded = await this.api.uploadCv(file).toPromise();
+      if (uploaded?.user) {
+        this.cvUrl = uploaded.user.cv_url || uploaded.cv_url || '';
+        this.roleService.updateCurrentUser(uploaded.user);
+        this.saveMsg = 'CV uploaded!';
+      }
+    } catch {
+      this.saveMsg = 'Failed to upload CV.';
+    } finally {
+      this.saving = false;
+      input.value = '';
+    }
+  }
+
   private formatEducation(items: any[]): string {
     return (items || []).map(item => [item?.degree, item?.school, item?.year].filter(Boolean).join(' | ')).join('\n');
   }
@@ -536,8 +710,92 @@ export class FreelancerProfilePage implements OnInit {
       .filter(item => Object.keys(item).length > 0);
   }
 
+  async fetchReviews(userId: string) {
+    try {
+      const res = await this.api.getFreelancerReviews(userId).toPromise();
+      if (res) {
+        this.reviews = res.reviews || [];
+        this.canReview = res.can_review || false;
+        
+        if (this.reviews.length > 0) {
+          const sum = this.reviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+          this.averageRating = sum / this.reviews.length;
+        } else {
+          this.averageRating = 0;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load reviews', err);
+    }
+  }
+
+  async submitReview() {
+    if (!this.freelancerId || !this.reviewText.trim()) return;
+    try {
+      this.submittingReview = true;
+      const res = await this.api.addReview(this.freelancerId, {
+        rating: this.reviewRating,
+        comment: this.reviewText.trim()
+      }).toPromise();
+      
+      if (res && res.review) {
+        this.reviews.unshift(res.review);
+        this.reviewText = '';
+        this.reviewRating = 5;
+        const sum = this.reviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+        this.averageRating = sum / this.reviews.length;
+      }
+    } catch (err) {
+      console.error('Failed to submit review', err);
+    } finally {
+      this.submittingReview = false;
+    }
+  }
+
+  getStars(rating: number): number[] {
+    return new Array(rating || 0);
+  }
+
   handleLogout() {
     this.roleService.logout();
     this.router.navigate(['/login']);
+  }
+
+  startEditReview(rev: any) {
+    this.editingReviewId = rev.id;
+    this.editReviewRating = rev.rating;
+    this.editReviewText = rev.comment;
+  }
+  
+  cancelEditReview() {
+    this.editingReviewId = null;
+  }
+  
+  async saveEditReview(rev: any) {
+    try {
+      this.submittingReview = true;
+      const res = await this.api.editReview(rev.id, {
+        rating: this.editReviewRating,
+        comment: this.editReviewText.trim()
+      }).toPromise();
+      
+      if (res && res.review) {
+        const index = this.reviews.findIndex(r => r.id === rev.id);
+        if (index !== -1) {
+          this.reviews[index] = res.review;
+        }
+        
+        if (this.reviews.length > 0) {
+          const sum = this.reviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+          this.averageRating = sum / this.reviews.length;
+        }
+        
+        this.editingReviewId = null;
+      }
+    } catch (err) {
+      console.error('Failed to edit review', err);
+    } finally {
+      this.submittingReview = false;
+    }
   }
 }

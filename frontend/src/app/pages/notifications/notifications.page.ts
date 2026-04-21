@@ -4,6 +4,7 @@ import { IonicModule } from '@ionic/angular';
 import { RouterModule } from '@angular/router';
 import { NotificationService } from '../../services/notification.service';
 import { ApiNotification } from '../../services/api.service';
+import { RoleService } from '../../services/role.service';
 
 @Component({
   selector: 'app-notifications',
@@ -19,7 +20,17 @@ export class NotificationsPage implements OnInit {
   pageSize = 20;
   totalCount = 0;
 
-  constructor(private notificationService: NotificationService) { }
+  constructor(
+    private notificationService: NotificationService,
+    private roleService: RoleService
+  ) { }
+
+  get defaultBackRoute(): string {
+    const role = this.roleService.role;
+    if (role === 'client') return '/dashboard-client';
+    if (role === 'admin') return '/dashboard-admin';
+    return '/dashboard';
+  }
 
   ngOnInit() {
     this.loadNotifications();
@@ -102,12 +113,26 @@ export class NotificationsPage implements OnInit {
 
   getNotificationLink(notification: ApiNotification): string {
     // Route to the related item (application, job, etc.)
-    if (notification.related_type === 'application') {
-      return `/dashboard-client`; // Go to client dashboard to see applications
+    if (notification.notification_type === 'job_pending_approval' || notification.notification_type === 'product_pending_approval') {
+      return '/dashboard-admin';
     }
+
+    if (notification.related_type === 'application') {
+      return '/gigs';
+    }
+
     if (notification.related_type === 'conversation' && notification.related_id) {
       return `/chat/${notification.related_id}`;
     }
-    return '/notifications';
+
+    if (notification.related_type === 'job') {
+      return '/gigs';
+    }
+
+    if (notification.related_type === 'product') {
+      return '/store';
+    }
+
+    return this.defaultBackRoute;
   }
 }

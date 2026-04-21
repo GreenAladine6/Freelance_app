@@ -287,9 +287,9 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .edit-avatar-preview img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; box-shadow: 0 8px 18px rgba(23, 57, 72, 0.14); }
     .edit-avatar-preview p { margin: 0; font-size: 11px; font-weight: 700; color: #6b7f8c; }
     .form-group label { display: block; font-size: 12px; font-weight: 700; color: #3b4e5a; margin-bottom: 4px; }
-    .custom-input, .custom-textarea { width: 100%; border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px 12px; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+    .custom-input, .custom-textarea { width: 100%; border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px 12px; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; color: #111827 !important; background: #fff !important; }
     .custom-input:focus, .custom-textarea:focus { border-color: #0f6d94; box-shadow: 0 0 0 2px rgba(15, 109, 148, 0.15); }
-    .custom-textarea { resize: none; }
+    .custom-textarea { resize: none; color: #111827 !important; }
     .file-input { padding: 9px 10px; background: #f9fafb; }
     .mb { margin-bottom: 12px; }
     .mb-lg { margin-bottom: 24px; }
