@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { IonicModule } from '@ionic/angular';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ToastController } from '@ionic/angular';
 import { ApiService, ApiUser, ApiJob } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
 import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.component';
@@ -238,6 +237,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .view-all-btn { font-size: 12px; font-weight: 700; color: #0f6d94; background: transparent; border: none; }
     
     .body-text { font-size: 12px; color: #3b4e5a; line-height: 1.65; margin: 0; }
+
     
     .tags-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .tag { background: #edf5f7; color: #255165; font-size: 10px; font-weight: 700; padding: 6px 12px; border-radius: 9999px; border: 1px solid #d9e7ed; }
@@ -331,8 +331,7 @@ export class ProfileClientPage implements OnInit {
     private router: Router,
     private route: ActivatedRoute,
     private roleService: RoleService,
-    private api: ApiService,
-    private toast: ToastController
+    private api: ApiService
   ) { }
 
   ngOnInit() {
@@ -477,12 +476,7 @@ export class ProfileClientPage implements OnInit {
     this.openEdit();
   }
 
-  async openHelpSupport() {
-    const t = await this.toast.create({
-      message: 'Support is available from the browse screen for now.',
-      duration: 2200,
-      color: 'medium'
-    });
-    t.present();
+  openHelpSupport() {
+    this.router.navigate(['/help-support']);
   }
 }

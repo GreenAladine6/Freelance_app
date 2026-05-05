@@ -31,6 +31,8 @@ const routes: Routes = [
   { path: 'profile-client', loadComponent: () => import('./pages/profile-client/profile-client.page').then(m => m.ProfileClientPage), canActivate: [AuthGuard] },
   { path: 'dashboard-admin', loadComponent: () => import('./pages/dashboard-admin/dashboard-admin.page').then(m => m.DashboardAdminPage), canActivate: [AuthGuard] },
   { path: 'dashboard-client', loadComponent: () => import('./pages/dashboard-client/dashboard-client.page').then(m => m.DashboardClientPage), canActivate: [AuthGuard] },
+  { path: 'help-support', loadComponent: () => import('./pages/help-support/help-support.page').then(m => m.HelpSupportPage), canActivate: [AuthGuard] },
+  { path: 'manage-jobs', loadComponent: () => import('./pages/manage-jobs/manage-jobs.page').then(m => m.ManageJobsPage), canActivate: [AuthGuard] },
   { path: 'dashboard', loadComponent: () => import('./pages/dashboard/dashboard.page').then(m => m.DashboardPage), canActivate: [AuthGuard] },
   { path: 'store', loadComponent: () => import('./pages/store/store.page').then(m => m.StorePage) },
   { path: 'store/checkout', loadComponent: () => import('./pages/store-checkout/store-checkout.page').then(m => m.StoreCheckoutPage) },
