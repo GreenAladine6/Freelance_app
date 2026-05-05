@@ -6,6 +6,7 @@ from flask_jwt_extended import decode_token
 from flask_socketio import disconnect, emit, join_room
 
 from models import Conversation, Message
+from message_security import validate_message_text
 
 # Track connected users by socket id for event authorization.
 _connected_users = {}
@@ -87,8 +88,9 @@ def register_socket_events(socketio):
             emit('chat_error', {'error': 'conversation_id is required'})
             return
 
-        if not text:
-            emit('chat_error', {'error': 'Message text is required'})
+        is_valid, error_message = validate_message_text(text)
+        if not is_valid:
+            emit('chat_error', {'error': error_message})
             return
 
         conv = _is_conversation_participant(conversation_id, current_user_id)

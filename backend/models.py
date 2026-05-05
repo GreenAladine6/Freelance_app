@@ -426,3 +426,130 @@ class Review:
             'comment': doc.get('comment'),
             'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
         }
+
+class Agreement:
+    collection = db.agreements
+
+    @staticmethod
+    def create(application_id, job_id, client_id, freelancer_id, budget):
+        """Create a new agreement when client accepts freelancer."""
+        agreement_doc = {
+            'application_id': ObjectId(application_id),
+            'job_id': ObjectId(job_id),
+            'client_id': ObjectId(client_id),
+            'freelancer_id': ObjectId(freelancer_id),
+            'budget': float(budget),
+            'client_approved': False,
+            'freelancer_approved': False,
+            'payment_status': 'pending',  # pending → paid → held (in escrow)
+            'completion_status': 'in_progress',  # in_progress → submitted → approved → rejected
+            'amount_paid': 0.0,
+            'app_fee_percent': 5.0,
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow()
+        }
+        res = Agreement.collection.insert_one(agreement_doc)
+        return Agreement.collection.find_one({'_id': res.inserted_id})
+
+    @staticmethod
+    def get_by_id(agreement_id):
+        try:
+            return Agreement.collection.find_one({'_id': ObjectId(agreement_id)})
+        except:
+            return None
+
+    @staticmethod
+    def approve(agreement_id, user_id):
+        """Approve agreement (client or freelancer)."""
+        agreement = Agreement.get_by_id(agreement_id)
+        if not agreement:
+            return None
+
+        user_oid = ObjectId(user_id)
+        update_dict = {}
+
+        if user_oid == agreement.get('client_id'):
+            update_dict['client_approved'] = True
+        elif user_oid == agreement.get('freelancer_id'):
+            update_dict['freelancer_approved'] = True
+        else:
+            return None
+
+        update_dict['updated_at'] = datetime.utcnow()
+        Agreement.collection.update_one({'_id': ObjectId(agreement_id)}, {'$set': update_dict})
+        return Agreement.collection.find_one({'_id': ObjectId(agreement_id)})
+
+    @staticmethod
+    def to_dict(agreement_doc):
+        if not agreement_doc:
+            return None
+        client = User.get_by_id(agreement_doc.get('client_id'))
+        freelancer = User.get_by_id(agreement_doc.get('freelancer_id'))
+        job = Job.get_by_id(agreement_doc.get('job_id'))
+        budget = agreement_doc.get('budget', 0)
+        app_fee_percent = agreement_doc.get('app_fee_percent', 5.0)
+        app_fee = budget * (app_fee_percent / 100.0)
+        freelancer_payout = budget - app_fee
+
+        return {
+            'id': str(agreement_doc['_id']),
+            'application_id': str(agreement_doc.get('application_id')),
+            'job_id': str(agreement_doc.get('job_id')),
+            'job_title': job.get('title') if job else None,
+            'client_id': str(agreement_doc.get('client_id')),
+            'client_name': (client.get('full_name') or client.get('username')) if client else None,
+            'freelancer_id': str(agreement_doc.get('freelancer_id')),
+            'freelancer_name': (freelancer.get('full_name') or freelancer.get('username')) if freelancer else None,
+            'budget': budget,
+            'app_fee_percent': app_fee_percent,
+            'app_fee': round(app_fee, 2),
+            'freelancer_payout': round(freelancer_payout, 2),
+            'client_approved': agreement_doc.get('client_approved', False),
+            'freelancer_approved': agreement_doc.get('freelancer_approved', False),
+            'both_approved': agreement_doc.get('client_approved', False) and agreement_doc.get('freelancer_approved', False),
+            'payment_status': agreement_doc.get('payment_status', 'pending'),
+            'amount_paid': agreement_doc.get('amount_paid', 0.0),
+            'completion_status': agreement_doc.get('completion_status', 'in_progress'),
+            'created_at': agreement_doc.get('created_at').isoformat() if hasattr(agreement_doc.get('created_at'), 'isoformat') else None,
+            'updated_at': agreement_doc.get('updated_at').isoformat() if hasattr(agreement_doc.get('updated_at'), 'isoformat') else None
+        }
+
+
+class Transaction:
+    collection = db.transactions
+
+    @staticmethod
+    def create(agreement_id, from_user_id, to_user_id, amount, transaction_type, description=''):
+        """Create a transaction record."""
+        transaction_doc = {
+            'agreement_id': ObjectId(agreement_id),
+            'from_user_id': ObjectId(from_user_id),
+            'to_user_id': ObjectId(to_user_id),
+            'amount': float(amount),
+            'type': transaction_type,  # payment, freelancer_payout, app_fee
+            'status': 'completed',
+            'description': description,
+            'created_at': datetime.utcnow()
+        }
+        res = Transaction.collection.insert_one(transaction_doc)
+        return Transaction.collection.find_one({'_id': res.inserted_id})
+
+    @staticmethod
+    def to_dict(doc):
+        if not doc:
+            return None
+        from_user = User.get_by_id(doc.get('from_user_id'))
+        to_user = User.get_by_id(doc.get('to_user_id'))
+        return {
+            'id': str(doc['_id']),
+            'agreement_id': str(doc.get('agreement_id')),
+            'from_user_id': str(doc.get('from_user_id')),
+            'from_user_name': (from_user.get('full_name') or from_user.get('username')) if from_user else None,
+            'to_user_id': str(doc.get('to_user_id')),
+            'to_user_name': (to_user.get('full_name') or to_user.get('username')) if to_user else None,
+            'amount': doc.get('amount', 0.0),
+            'type': doc.get('type'),
+            'status': doc.get('status'),
+            'description': doc.get('description'),
+            'created_at': doc.get('created_at').isoformat() if hasattr(doc.get('created_at'), 'isoformat') else None
+        }

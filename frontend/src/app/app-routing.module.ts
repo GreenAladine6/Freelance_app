@@ -21,6 +21,8 @@ const routes: Routes = [
   { path: 'conversations', loadComponent: () => import('./pages/conversations-list/conversations-list.page').then(m => m.ConversationsListPage), canActivate: [AuthGuard] },
   { path: 'create-gig', loadComponent: () => import('./pages/create-gig/create-gig.page').then(m => m.CreateGigPage), canActivate: [AuthGuard] },
   { path: 'gigs', loadComponent: () => import('./pages/gigs-list/gigs-list.page').then(m => m.GigsListPage), canActivate: [AuthGuard] },
+  { path: 'agreement/:id', loadComponent: () => import('./pages/agreement-detail/agreement-detail.page').then(m => m.AgreementDetailPage), canActivate: [AuthGuard] },
+  { path: 'agreements', loadComponent: () => import('./pages/agreements-list/agreements-list.page').then(m => m.AgreementsListPage), canActivate: [AuthGuard] },
   { path: 'freelancer-profile/:id', loadComponent: () => import('./pages/freelancer-profile/freelancer-profile.page').then(m => m.FreelancerProfilePage) },
   { path: 'freelancer-profile', loadComponent: () => import('./pages/freelancer-profile/freelancer-profile.page').then(m => m.FreelancerProfilePage) },
   { path: 'profile-admin/:id', loadComponent: () => import('./pages/profile-admin/profile-admin.page').then(m => m.ProfileAdminPage), canActivate: [AuthGuard] },

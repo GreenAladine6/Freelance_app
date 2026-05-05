@@ -8,9 +8,10 @@ import os
 import uuid
 from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
-from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification
+from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification, Agreement, Transaction
 from google.auth.transport import requests
 from google.oauth2 import id_token
+from message_security import validate_message_text
 
 api = Blueprint('api', __name__)
 
@@ -533,7 +534,7 @@ def get_job_applications(job_id):
 @api.route('/applications/<application_id>/accept', methods=['POST'])
 @jwt_required()
 def accept_application(application_id):
-    """Accept an application (client only)."""
+    """Accept an application (client only) and create an agreement."""
     current_user_id = get_jwt_identity()
     app_doc = Application.get_by_id(application_id)
     
@@ -548,8 +549,18 @@ def accept_application(application_id):
     # Update application status
     Application.collection.update_one({'_id': ObjectId(application_id)}, {'$set': {'status': 'accepted'}})
     
-    # Update job status
-    Job.collection.update_one({'_id': job_doc['_id']}, {'$set': {'status': 'in_progress', 'updated_at': datetime.utcnow()}})
+    # Create agreement for the contract workflow
+    budget = job_doc.get('budget', 0)
+    agreement = Agreement.create(
+        application_id=application_id,
+        job_id=str(job_doc.get('_id')),
+        client_id=current_user_id,
+        freelancer_id=str(app_doc.get('freelancer_id')),
+        budget=budget
+    )
+
+    # Update job status to awaiting_agreement (will be in_progress once both approve + client pays)
+    Job.collection.update_one({'_id': job_doc['_id']}, {'$set': {'status': 'awaiting_agreement', 'updated_at': datetime.utcnow()}})
 
     # Notify freelancer about decision
     freelancer_id = app_doc.get('freelancer_id')
@@ -564,6 +575,31 @@ def accept_application(application_id):
         message=acceptance_message,
         related_id=str(app_doc.get('_id')),
         related_type='application'
+    )
+
+    # Send agreement notification to BOTH client and freelancer
+    agreement_id = str(agreement.get('_id'))
+    
+    # Notify freelancer
+    Notification.create(
+        recipient_id=str(freelancer_id),
+        notification_type='agreement_created',
+        title='New Agreement',
+        message=f'An agreement has been created for "{job_title}". Review and approve it to proceed.',
+        related_id=agreement_id,
+        related_type='agreement'
+    )
+    
+    # Notify client
+    freelancer_doc = User.get_by_id(freelancer_id)
+    freelancer_name = freelancer_doc.get('full_name') or freelancer_doc.get('username') if freelancer_doc else 'Freelancer'
+    Notification.create(
+        recipient_id=str(current_user_id),
+        notification_type='agreement_created',
+        title='Agreement Created',
+        message=f'Your agreement with {freelancer_name} for "{job_title}" is ready. Review and approve to continue.',
+        related_id=agreement_id,
+        related_type='agreement'
     )
 
     # Open conversation and seed it with the acceptance message
@@ -593,8 +629,9 @@ def accept_application(application_id):
     updated_app = Application.get_by_id(application_id)
     
     return jsonify({
-        'message': 'Application accepted successfully',
-        'application': Application.to_dict(updated_app)
+        'message': 'Application accepted successfully. Agreement created.',
+        'application': Application.to_dict(updated_app),
+        'agreement': Agreement.to_dict(agreement)
     }), 200
 
 
@@ -646,6 +683,279 @@ def get_my_applications():
     apps_cursor = Application.collection.find({'freelancer_id': ObjectId(current_user_id)}).sort('created_at', -1)
     
     return jsonify([Application.to_dict(app) for app in apps_cursor]), 200
+
+
+# ==================== Agreement Routes ====================
+
+@api.route('/agreements/<agreement_id>', methods=['GET'])
+@jwt_required()
+def get_agreement(agreement_id):
+    """Get agreement details (client or freelancer)."""
+    current_user_id = get_jwt_identity()
+    agreement = Agreement.get_by_id(agreement_id)
+    
+    if not agreement:
+        return jsonify({'error': 'Agreement not found'}), 404
+    
+    # Check if user is involved in this agreement
+    if str(agreement.get('client_id')) != current_user_id and str(agreement.get('freelancer_id')) != current_user_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    return jsonify(Agreement.to_dict(agreement)), 200
+
+
+@api.route('/agreements', methods=['GET'])
+@jwt_required()
+def get_my_agreements():
+    """Get all agreements for current user (as client or freelancer)."""
+    current_user_id = get_jwt_identity()
+    user_oid = ObjectId(current_user_id)
+    
+    agreements = Agreement.collection.find({
+        '$or': [
+            {'client_id': user_oid},
+            {'freelancer_id': user_oid}
+        ]
+    }).sort('created_at', -1)
+    
+    return jsonify([Agreement.to_dict(a) for a in agreements]), 200
+
+
+@api.route('/agreements/<agreement_id>/approve', methods=['PUT'])
+@jwt_required()
+def approve_agreement(agreement_id):
+    """Approve an agreement (client or freelancer)."""
+    current_user_id = get_jwt_identity()
+    agreement = Agreement.get_by_id(agreement_id)
+    
+    if not agreement:
+        return jsonify({'error': 'Agreement not found'}), 404
+    
+    # Check if user is involved
+    if str(agreement.get('client_id')) != current_user_id and str(agreement.get('freelancer_id')) != current_user_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    updated = Agreement.approve(agreement_id, current_user_id)
+    if not updated:
+        return jsonify({'error': 'Could not approve agreement'}), 400
+    
+    # Notify the other party
+    other_user_id = agreement.get('freelancer_id') if str(agreement.get('client_id')) == current_user_id else agreement.get('client_id')
+    current_user = User.get_by_id(current_user_id)
+    user_type = "Client" if str(agreement.get('client_id')) == current_user_id else "Freelancer"
+    job = Job.get_by_id(agreement.get('job_id'))
+    
+    Notification.create(
+        recipient_id=str(other_user_id),
+        notification_type='agreement_approved',
+        title='Agreement Approved',
+        message=f'{user_type} approved the agreement for {job.get("title") if job else "your project"}',
+        related_id=agreement_id,
+        related_type='agreement'
+    )
+    
+    return jsonify({
+        'message': 'Agreement approved successfully',
+        'agreement': Agreement.to_dict(updated)
+    }), 200
+
+
+@api.route('/agreements/<agreement_id>/payment', methods=['POST'])
+@jwt_required()
+def process_payment(agreement_id):
+    """Client pays for the agreement (funds held in escrow)."""
+    current_user_id = get_jwt_identity()
+    agreement = Agreement.get_by_id(agreement_id)
+    
+    if not agreement:
+        return jsonify({'error': 'Agreement not found'}), 404
+    
+    if str(agreement.get('client_id')) != current_user_id:
+        return jsonify({'error': 'Only the client can make payment'}), 403
+    
+    if not (agreement.get('client_approved') and agreement.get('freelancer_approved')):
+        return jsonify({'error': 'Both parties must approve the agreement before payment'}), 400
+    
+    # In a real system, this would integrate with a payment processor (Stripe, PayPal, etc.)
+    # For now, we'll simulate the payment and mark funds as held
+    budget = agreement.get('budget', 0)
+    
+    Agreement.collection.update_one(
+        {'_id': ObjectId(agreement_id)},
+        {'$set': {
+            'payment_status': 'held',
+            'amount_paid': budget,
+            'updated_at': datetime.utcnow()
+        }}
+    )
+    
+    # Create transaction record
+    Transaction.create(
+        agreement_id=agreement_id,
+        from_user_id=current_user_id,
+        to_user_id=current_user_id,  # Payment held by app (represented as client)
+        amount=budget,
+        transaction_type='payment',
+        description=f'Client payment for agreement, held in escrow'
+    )
+    
+    # Update job status to in_progress
+    Job.collection.update_one(
+        {'_id': agreement.get('job_id')},
+        {'$set': {'status': 'in_progress', 'updated_at': datetime.utcnow()}}
+    )
+    
+    # Notify freelancer
+    freelancer_id = agreement.get('freelancer_id')
+    client_doc = User.get_by_id(current_user_id)
+    job = Job.get_by_id(agreement.get('job_id'))
+    
+    Notification.create(
+        recipient_id=str(freelancer_id),
+        notification_type='payment_received',
+        title='Payment Received',
+        message=f'Payment of ${budget} has been received for {job.get("title") if job else "your project"}. Project is now in progress.',
+        related_id=agreement_id,
+        related_type='agreement'
+    )
+    
+    updated_agreement = Agreement.get_by_id(agreement_id)
+    
+    return jsonify({
+        'message': 'Payment processed successfully. Funds held in escrow.',
+        'agreement': Agreement.to_dict(updated_agreement)
+    }), 200
+
+
+@api.route('/agreements/<agreement_id>/submit-completion', methods=['PUT'])
+@jwt_required()
+def submit_completion(agreement_id):
+    """Freelancer submits project for completion approval."""
+    current_user_id = get_jwt_identity()
+    agreement = Agreement.get_by_id(agreement_id)
+    
+    if not agreement:
+        return jsonify({'error': 'Agreement not found'}), 404
+    
+    if str(agreement.get('freelancer_id')) != current_user_id:
+        return jsonify({'error': 'Only the freelancer can submit for completion'}), 403
+    
+    if agreement.get('payment_status') != 'held':
+        return jsonify({'error': 'Payment must be completed before submitting for completion'}), 400
+    
+    Agreement.collection.update_one(
+        {'_id': ObjectId(agreement_id)},
+        {'$set': {
+            'completion_status': 'submitted',
+            'updated_at': datetime.utcnow()
+        }}
+    )
+    
+    # Notify client
+    client_id = agreement.get('client_id')
+    freelancer_doc = User.get_by_id(current_user_id)
+    job = Job.get_by_id(agreement.get('job_id'))
+    
+    Notification.create(
+        recipient_id=str(client_id),
+        notification_type='completion_submitted',
+        title='Project Submitted for Approval',
+        message=f'The freelancer has submitted {job.get("title") if job else "your project"} for completion. Please review and approve.',
+        related_id=agreement_id,
+        related_type='agreement'
+    )
+    
+    updated_agreement = Agreement.get_by_id(agreement_id)
+    
+    return jsonify({
+        'message': 'Project submitted for completion approval',
+        'agreement': Agreement.to_dict(updated_agreement)
+    }), 200
+
+
+@api.route('/agreements/<agreement_id>/approve-completion', methods=['PUT'])
+@jwt_required()
+def approve_completion(agreement_id):
+    """Client approves project completion and releases funds."""
+    current_user_id = get_jwt_identity()
+    agreement = Agreement.get_by_id(agreement_id)
+    
+    if not agreement:
+        return jsonify({'error': 'Agreement not found'}), 404
+    
+    if str(agreement.get('client_id')) != current_user_id:
+        return jsonify({'error': 'Only the client can approve completion'}), 403
+    
+    if agreement.get('completion_status') != 'submitted':
+        return jsonify({'error': 'Project must be submitted before approval'}), 400
+    
+    # Calculate payouts
+    budget = agreement.get('budget', 0)
+    app_fee_percent = agreement.get('app_fee_percent', 5.0)
+    app_fee = budget * (app_fee_percent / 100.0)
+    freelancer_payout = budget - app_fee
+    
+    # Update agreement
+    Agreement.collection.update_one(
+        {'_id': ObjectId(agreement_id)},
+        {'$set': {
+            'completion_status': 'approved',
+            'payment_status': 'paid',
+            'updated_at': datetime.utcnow()
+        }}
+    )
+    
+    # Create transaction records for app fee and freelancer payout
+    app_user_id = current_user_id  # Represented as coming from client/app
+    freelancer_id = agreement.get('freelancer_id')
+    
+    Transaction.create(
+        agreement_id=agreement_id,
+        from_user_id=app_user_id,
+        to_user_id=app_user_id,  # App fee to app account
+        amount=app_fee,
+        transaction_type='app_fee',
+        description=f'Platform fee (5%) from agreement'
+    )
+    
+    Transaction.create(
+        agreement_id=agreement_id,
+        from_user_id=app_user_id,
+        to_user_id=str(freelancer_id),
+        amount=freelancer_payout,
+        transaction_type='freelancer_payout',
+        description=f'Freelancer payout for completed project'
+    )
+    
+    # Update job status to completed
+    Job.collection.update_one(
+        {'_id': agreement.get('job_id')},
+        {'$set': {'status': 'completed', 'updated_at': datetime.utcnow()}}
+    )
+    
+    # Notify freelancer
+    freelancer_doc = User.get_by_id(freelancer_id)
+    job = Job.get_by_id(agreement.get('job_id'))
+    
+    Notification.create(
+        recipient_id=str(freelancer_id),
+        notification_type='completion_approved',
+        title='Project Approved & Payment Released',
+        message=f'Your project "{job.get("title") if job else ""}" has been approved. ${freelancer_payout:.2f} has been released to your account.',
+        related_id=agreement_id,
+        related_type='agreement'
+    )
+    
+    updated_agreement = Agreement.get_by_id(agreement_id)
+    
+    return jsonify({
+        'message': 'Project completion approved. Payment released.',
+        'agreement': Agreement.to_dict(updated_agreement),
+        'transactions': {
+            'app_fee': app_fee,
+            'freelancer_payout': freelancer_payout
+        }
+    }), 200
 
 
 # ==================== Notification Routes ====================
@@ -992,8 +1302,9 @@ def send_message():
     conversation_id = data.get('conversation_id')
     text = data.get('text')
     
-    if not text:
-        return jsonify({'error': 'Message text is required'}), 400
+    is_valid, error_message = validate_message_text(text)
+    if not is_valid:
+        return jsonify({'error': error_message}), 400
         
     if conversation_id:
         conv = Conversation.collection.find_one({'_id': ObjectId(conversation_id)})

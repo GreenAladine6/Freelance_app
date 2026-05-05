@@ -41,7 +41,7 @@
         [routerLink]="getNotificationLink(notification)"
         (click)="markAsRead(notification)">
         <div class="notification-icon" [class.read]="notification.is_read">
-          <ion-icon [name]="notification.notification_type === 'job_application' ? 'briefcase-outline' : 'notifications-outline'"></ion-icon>
+          <ion-icon [name]="getNotificationIcon(notification)"></ion-icon>
         </div>
 
         <div class="notification-body">

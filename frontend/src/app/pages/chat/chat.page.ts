@@ -5,8 +5,8 @@ import { IonicModule } from '@ionic/angular';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService, ApiMessage, ApiConversation } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
-import { interval, Subscription } from 'rxjs';
-import { startWith, switchMap } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
+import { RealtimeChatService } from '../../services/realtime-chat.service';
 
 @Component({
   selector: 'app-chat',
@@ -32,6 +32,9 @@ import { startWith, switchMap } from 'rxjs/operators';
     </ion-header>
 
     <ion-content class="chat-content" #content>
+      <div class="message-alert" *ngIf="messageError">
+        {{ messageError }}
+      </div>
       <div class="message-list">
         <div *ngIf="messages.length === 0" class="empty-chat-state">
           <h2>Start something great</h2>
@@ -78,6 +81,16 @@ import { startWith, switchMap } from 'rxjs/operators';
         radial-gradient(circle at 5% 10%, #fde68a55 0%, transparent 32%),
         radial-gradient(circle at 95% 15%, #ddd6fe77 0%, transparent 34%),
         linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    }
+    .message-alert {
+      margin: 14px 16px 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(254, 226, 226, 0.96);
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      font-size: 13px;
+      font-weight: 600;
     }
     .message-list { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
     .empty-chat-state {
@@ -149,13 +162,18 @@ export class ChatPage implements OnInit, OnDestroy {
   conversationId = '';
   currentUserId = '';
   otherUser: any = null;
-  private pollSub?: Subscription;
+  messageError = '';
+  private realtimeSub?: Subscription;
+  private realtimeErrorSub?: Subscription;
+  private tempMessageCounter = 0;
+  private pendingTempMessageId: string | null = null;
 
   constructor(
     private route: ActivatedRoute,
     public api: ApiService,
     private roleService: RoleService,
-    private router: Router
+    private router: Router,
+    private realtimeChat: RealtimeChatService
   ) { }
 
   ngOnInit() {
@@ -164,7 +182,7 @@ export class ChatPage implements OnInit, OnDestroy {
 
     this.loadMessages();
     this.loadConversation();
-    this.startPolling();
+    this.startRealtime();
   }
 
   loadConversation() {
@@ -174,7 +192,9 @@ export class ChatPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
-    this.pollSub?.unsubscribe();
+    this.realtimeSub?.unsubscribe();
+    this.realtimeErrorSub?.unsubscribe();
+    this.realtimeChat.disconnect();
   }
 
   loadMessages() {
@@ -184,16 +204,53 @@ export class ChatPage implements OnInit, OnDestroy {
     });
   }
 
-  startPolling() {
-    this.pollSub = interval(3000).pipe(
-      startWith(0),
-      switchMap(() => this.api.getMessages(this.conversationId))
-    ).subscribe(msgs => {
-      if (msgs.length > this.messages.length) {
-        this.messages = msgs;
-        this.scrollToBottom();
+  startRealtime() {
+    this.realtimeChat.joinConversation(this.conversationId);
+
+    this.realtimeSub = this.realtimeChat.onNewMessage().subscribe(msg => {
+      if (msg.conversation_id !== this.conversationId) {
+        return;
       }
+
+      const existingById = this.messages.some(existing => existing.id === msg.id);
+      if (existingById) {
+        return;
+      }
+
+      // Reconcile optimistic message from current user with the server payload.
+      const optimisticIndex = this.messages.findIndex(existing =>
+        existing.id.startsWith('temp-') &&
+        existing.sender_id === this.currentUserId &&
+        existing.text === msg.text
+      );
+
+      if (optimisticIndex >= 0) {
+        const updated = [...this.messages];
+        updated[optimisticIndex] = msg;
+        this.messages = updated;
+        this.pendingTempMessageId = null;
+        this.scrollToBottom();
+        return;
+      }
+
+      this.messages = [...this.messages, msg];
+      this.scrollToBottom();
     });
+
+    this.realtimeErrorSub = this.realtimeChat.onError().subscribe(err => {
+      console.error('Realtime chat error:', err);
+      this.messageError = err;
+      this.removePendingMessage();
+    });
+  }
+
+  private removePendingMessage() {
+    if (!this.pendingTempMessageId) {
+      return;
+    }
+
+    this.messages = this.messages.filter(message => message.id !== this.pendingTempMessageId);
+    this.pendingTempMessageId = null;
   }
 
   scrollToBottom() {
@@ -204,17 +261,43 @@ export class ChatPage implements OnInit, OnDestroy {
 
   handleSendMessage(event?: Event) {
     if (event) event.preventDefault();
-    if (!this.inputValue.trim()) return;
+    const text = this.inputValue.trim();
+    if (!text) return;
 
-    const text = this.inputValue;
+    this.messageError = '';
     this.inputValue = '';
+
+    const optimisticMessage: ApiMessage = {
+      id: `temp-${Date.now()}-${this.tempMessageCounter++}`,
+      conversation_id: this.conversationId,
+      sender_id: this.currentUserId,
+      text,
+      is_read: true,
+      created_at: new Date().toISOString()
+    };
+
+    this.messages = [...this.messages, optimisticMessage];
+    this.pendingTempMessageId = optimisticMessage.id;
+    this.scrollToBottom();
+
+    if (this.realtimeChat.isConnected) {
+      this.realtimeChat.sendMessage(this.conversationId, text);
+      return;
+    }
 
     this.api.sendMessage({
       conversation_id: this.conversationId,
       text: text
     }).subscribe(msg => {
+      this.messages = this.messages.filter(m => m.id !== optimisticMessage.id);
       this.messages.push(msg);
+      this.pendingTempMessageId = null;
       this.scrollToBottom();
+    }, () => {
+      // Keep UI consistent if send fails.
+      this.messages = this.messages.filter(m => m.id !== optimisticMessage.id);
+      this.pendingTempMessageId = null;
+      this.messageError = 'Message could not be sent.';
     });
   }
 

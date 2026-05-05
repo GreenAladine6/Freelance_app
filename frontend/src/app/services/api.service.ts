@@ -88,6 +88,29 @@ export interface ApiApplication {
     created_at?: string;
 }
 
+export interface ApiAgreement {
+    id: string;
+    application_id: string;
+    job_id: string;
+    job_title: string;
+    client_id: string;
+    client_name: string;
+    freelancer_id: string;
+    freelancer_name: string;
+    budget: number;
+    app_fee_percent: number;
+    app_fee: number;
+    freelancer_payout: number;
+    client_approved: boolean;
+    freelancer_approved: boolean;
+    both_approved: boolean;
+    payment_status: 'pending' | 'held' | 'paid';
+    amount_paid: number;
+    completion_status: 'in_progress' | 'submitted' | 'approved' | 'rejected';
+    created_at: string;
+    updated_at: string;
+}
+
 export interface AdminStats {
     total_users: number;
     freelancers: number;
@@ -260,6 +283,31 @@ export class ApiService {
 
     getMyApplications(): Observable<ApiApplication[]> {
         return this.http.get<ApiApplication[]>(`${this.baseUrl}/my-applications`);
+    }
+
+    // ── Agreements ────────────────────────────────────────
+    getAgreements(): Observable<ApiAgreement[]> {
+        return this.http.get<ApiAgreement[]>(`${this.baseUrl}/agreements`);
+    }
+
+    getAgreement(agreementId: string): Observable<ApiAgreement> {
+        return this.http.get<ApiAgreement>(`${this.baseUrl}/agreements/${agreementId}`);
+    }
+
+    approveAgreement(agreementId: string): Observable<{ message: string; agreement: ApiAgreement }> {
+        return this.http.put<{ message: string; agreement: ApiAgreement }>(`${this.baseUrl}/agreements/${agreementId}/approve`, {});
+    }
+
+    processPayment(agreementId: string): Observable<{ message: string; agreement: ApiAgreement }> {
+        return this.http.post<{ message: string; agreement: ApiAgreement }>(`${this.baseUrl}/agreements/${agreementId}/payment`, {});
+    }
+
+    submitCompletion(agreementId: string): Observable<{ message: string; agreement: ApiAgreement }> {
+        return this.http.put<{ message: string; agreement: ApiAgreement }>(`${this.baseUrl}/agreements/${agreementId}/submit-completion`, {});
+    }
+
+    approveCompletion(agreementId: string): Observable<{ message: string; agreement: ApiAgreement; transactions: any }> {
+        return this.http.put<{ message: string; agreement: ApiAgreement; transactions: any }>(`${this.baseUrl}/agreements/${agreementId}/approve-completion`, {});
     }
 
     // ── Freelancers ───────────────────────────────────────

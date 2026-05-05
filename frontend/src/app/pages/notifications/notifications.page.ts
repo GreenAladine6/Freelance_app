@@ -4,7 +4,6 @@ import { IonicModule } from '@ionic/angular';
 import { RouterModule } from '@angular/router';
 import { NotificationService } from '../../services/notification.service';
 import { ApiNotification } from '../../services/api.service';
-import { RoleService } from '../../services/role.service';
 
 @Component({
   selector: 'app-notifications',
@@ -19,18 +18,9 @@ export class NotificationsPage implements OnInit {
   currentPage = 1;
   pageSize = 20;
   totalCount = 0;
+  defaultBackRoute = '/home';
 
-  constructor(
-    private notificationService: NotificationService,
-    private roleService: RoleService
-  ) { }
-
-  get defaultBackRoute(): string {
-    const role = this.roleService.role;
-    if (role === 'client') return '/dashboard-client';
-    if (role === 'admin') return '/dashboard-admin';
-    return '/dashboard';
-  }
+  constructor(private notificationService: NotificationService) { }
 
   ngOnInit() {
     this.loadNotifications();
@@ -112,27 +102,34 @@ export class NotificationsPage implements OnInit {
   }
 
   getNotificationLink(notification: ApiNotification): string {
-    // Route to the related item (application, job, etc.)
-    if (notification.notification_type === 'job_pending_approval' || notification.notification_type === 'product_pending_approval') {
-      return '/dashboard-admin';
-    }
-
+    // Route to the related item (application, job, agreement, etc.)
     if (notification.related_type === 'application') {
-      return '/gigs';
+      return `/dashboard-client`; // Go to client dashboard to see applications
     }
-
-    if (notification.related_type === 'conversation' && notification.related_id) {
-      return `/chat/${notification.related_id}`;
+    if (notification.related_type === 'agreement') {
+      return `/agreement/${notification.related_id}`; // Go directly to the agreement
     }
-
-    if (notification.related_type === 'job') {
-      return '/gigs';
+    if (notification.related_type === 'conversation') {
+      return `/chat/${notification.related_id}`; // Go to the conversation
     }
+    return '/notifications';
+  }
 
-    if (notification.related_type === 'product') {
-      return '/store';
+  getNotificationIcon(notification: ApiNotification): string {
+    // Return appropriate icon based on notification type
+    switch (notification.notification_type) {
+      case 'job_application':
+      case 'application_accepted':
+        return 'briefcase-outline';
+      case 'agreement_created':
+      case 'agreement_approved':
+        return 'checkmark-circle-outline';
+      case 'payment_received':
+        return 'wallet-outline';
+      case 'conversation_started':
+        return 'chatbubble-outline';
+      default:
+        return 'notifications-outline';
     }
-
-    return this.defaultBackRoute;
   }
 }
