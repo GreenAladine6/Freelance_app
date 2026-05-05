@@ -322,9 +322,13 @@ export class SignupPage {
     }
 
     this.api.register(payload).subscribe({
-      next: async () => {
+      next: async (res) => {
         await loader.dismiss();
-        const t = await this.toast.create({ message: 'Account created! Please sign in.', duration: 3000, color: 'success' });
+        const t = await this.toast.create({
+          message: 'Account created! Please check your email for the verification code, then sign in.',
+          duration: 5000,
+          color: 'success'
+        });
         t.present();
         this.router.navigate(['/login']);
       },

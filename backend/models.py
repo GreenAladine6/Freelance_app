@@ -34,6 +34,9 @@ class User:
         experience=None,
         portfolio=None,
         is_available_for_hire=None,
+        is_email_verified=False,
+        email_verification_code=None,
+        email_verification_expires_at=None,
     ):
         password_hash = generate_password_hash(password) if password else None
         if is_available_for_hire is None:
@@ -53,6 +56,9 @@ class User:
             'experience': experience or [],
             'portfolio': portfolio or [],
             'is_available_for_hire': is_available_for_hire,
+            'is_email_verified': is_email_verified,
+            'email_verification_code': email_verification_code,
+            'email_verification_expires_at': email_verification_expires_at,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -105,6 +111,7 @@ class User:
             'experience': user_doc.get('experience', []),
             'portfolio': user_doc.get('portfolio', []),
             'is_available_for_hire': user_doc.get('is_available_for_hire', is_freelancer),
+            'is_email_verified': user_doc.get('is_email_verified', True),
             'created_at': user_doc.get('created_at').isoformat() if hasattr(user_doc.get('created_at'), 'isoformat') else user_doc.get('created_at')
         }
 

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, send_from_directory
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity
@@ -6,12 +6,15 @@ from flask_jwt_extended import (
 from datetime import datetime
 import os
 import uuid
+import random
+from datetime import timedelta
 from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
-from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification, Agreement, Transaction
+from models import User, Job, Application, Conversation, Message, Product, AdminLog, Report, ProfileUpdateLog, Notification, Agreement, Transaction, Review
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from message_security import validate_message_text
+from email_utils import send_verification_email
 
 api = Blueprint('api', __name__)
 
@@ -35,6 +38,10 @@ def _user_response(user_doc):
     if payload and not payload.get('avatar_url'):
         payload['avatar_url'] = _default_avatar_url()
     return payload
+
+
+def _generate_verification_code():
+    return f"{random.randint(100000, 999999)}"
 
 # ==================== Authentication Routes ====================
 
@@ -63,6 +70,9 @@ def register():
         return jsonify({'error': 'Email already exists'}), 409
     
     # Create new user
+    verification_code = _generate_verification_code()
+    verification_expires_at = datetime.utcnow() + timedelta(minutes=15)
+
     user_doc = User.create(
         username=data['username'],
         email=data['email'],
@@ -75,12 +85,20 @@ def register():
         avatar_url=data.get('avatar_url') or _default_avatar_url(),
         education=data.get('education'),
         experience=data.get('experience'),
-        portfolio=data.get('portfolio')
+        portfolio=data.get('portfolio'),
+        is_email_verified=False,
+        email_verification_code=verification_code,
+        email_verification_expires_at=verification_expires_at
     )
+
+    email_sent = send_verification_email(current_app, data['email'], verification_code)
+    if not email_sent:
+        return jsonify({'error': 'Account created but failed to send verification email. Please try resend code.'}), 500
     
     return jsonify({
-        'message': 'User registered successfully',
-        'user': _user_response(user_doc)
+        'message': 'User registered successfully. Verify your email before login.',
+        'user': _user_response(user_doc),
+        'requires_email_verification': True
     }), 201
 
 
@@ -96,6 +114,12 @@ def login():
     
     if not user_doc or not User.check_password(user_doc, data['password']):
         return jsonify({'error': 'Invalid email or password'}), 401
+
+    if user_doc.get('is_email_verified') is False:
+        return jsonify({
+            'error': 'Please verify your email before logging in',
+            'requires_email_verification': True
+        }), 403
 
     # Ensure user_type exists and is one of supported roles
     user_type = user_doc.get('user_type')
@@ -158,7 +182,8 @@ def login_google():
                 password=None,  # Google users don't have password
                 user_type='freelancer',
                 full_name=full_name,
-                avatar_url=picture or _default_avatar_url()
+                avatar_url=picture or _default_avatar_url(),
+                is_email_verified=True
             )
             user_id = str(user_doc['_id'])
         
@@ -190,6 +215,84 @@ def refresh():
     
     return jsonify({
         'access_token': access_token
+    }), 200
+
+
+@api.route('/verify-email', methods=['POST'])
+def verify_email():
+    """Verify a user's email using a one-time code."""
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    code = (data.get('code') or '').strip()
+
+    if not email or not code:
+        return jsonify({'error': 'Email and verification code are required'}), 400
+
+    user_doc = User.get_by_email(email)
+    if not user_doc:
+        return jsonify({'error': 'User not found'}), 404
+
+    if user_doc.get('is_email_verified'):
+        return jsonify({'message': 'Email already verified'}), 200
+
+    if user_doc.get('email_verification_code') != code:
+        return jsonify({'error': 'Invalid verification code'}), 400
+
+    expires_at = user_doc.get('email_verification_expires_at')
+    if expires_at and expires_at < datetime.utcnow():
+        return jsonify({'error': 'Verification code expired. Request a new code.'}), 400
+
+    User.collection.update_one(
+        {'_id': user_doc['_id']},
+        {
+            '$set': {
+                'is_email_verified': True,
+                'updated_at': datetime.utcnow()
+            },
+            '$unset': {
+                'email_verification_code': '',
+                'email_verification_expires_at': ''
+            }
+        }
+    )
+
+    return jsonify({'message': 'Email verified successfully'}), 200
+
+
+@api.route('/resend-verification-code', methods=['POST'])
+def resend_verification_code():
+    """Resend a verification code for an unverified user."""
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+
+    user_doc = User.get_by_email(email)
+    if not user_doc:
+        return jsonify({'error': 'User not found'}), 404
+
+    if user_doc.get('is_email_verified'):
+        return jsonify({'message': 'Email already verified'}), 200
+
+    verification_code = _generate_verification_code()
+    verification_expires_at = datetime.utcnow() + timedelta(minutes=15)
+    User.collection.update_one(
+        {'_id': user_doc['_id']},
+        {
+            '$set': {
+                'email_verification_code': verification_code,
+                'email_verification_expires_at': verification_expires_at,
+                'updated_at': datetime.utcnow()
+            }
+        }
+    )
+
+    email_sent = send_verification_email(current_app, email, verification_code)
+    if not email_sent:
+        return jsonify({'error': 'Failed to send verification email. Check mail configuration.'}), 500
+
+    return jsonify({
+        'message': 'Verification code resent'
     }), 200
 
 
@@ -1068,6 +1171,138 @@ def get_user(user_id):
         return jsonify({'error': 'User not found'}), 404
     
     return jsonify(_user_response(user_doc)), 200
+
+
+@api.route('/users/<user_id>/reviews', methods=['GET'])
+@jwt_required(optional=True)
+def get_user_reviews(user_id):
+    """Get reviews for a freelancer profile and whether current user can review."""
+    freelancer_doc = User.get_by_id(user_id)
+    if not freelancer_doc:
+        return jsonify({'error': 'User not found'}), 404
+
+    reviews = [Review.to_dict(r) for r in Review.get_by_freelancer(user_id)]
+
+    current_user_id = get_jwt_identity()
+    can_review = False
+    if current_user_id and current_user_id != user_id:
+        current_user = User.get_by_id(current_user_id)
+        if current_user and current_user.get('user_type') == 'client':
+            has_completed_agreement = Agreement.collection.find_one({
+                'client_id': ObjectId(current_user_id),
+                'freelancer_id': ObjectId(user_id),
+                'completion_status': 'approved'
+            }) is not None
+
+            already_reviewed = Review.collection.find_one({
+                'freelancer_id': ObjectId(user_id),
+                'reviewer_id': ObjectId(current_user_id)
+            }) is not None
+
+            can_review = has_completed_agreement and not already_reviewed
+
+    return jsonify({
+        'reviews': reviews,
+        'can_review': can_review
+    }), 200
+
+
+@api.route('/users/<user_id>/reviews', methods=['POST'])
+@jwt_required()
+def add_user_review(user_id):
+    """Add a review for a freelancer (client only after completed work)."""
+    current_user_id = get_jwt_identity()
+    reviewer_doc = User.get_by_id(current_user_id)
+    freelancer_doc = User.get_by_id(user_id)
+
+    if not freelancer_doc:
+        return jsonify({'error': 'Freelancer not found'}), 404
+
+    if not reviewer_doc or reviewer_doc.get('user_type') != 'client':
+        return jsonify({'error': 'Only clients can submit reviews'}), 403
+
+    if current_user_id == user_id:
+        return jsonify({'error': 'You cannot review yourself'}), 400
+
+    has_completed_agreement = Agreement.collection.find_one({
+        'client_id': ObjectId(current_user_id),
+        'freelancer_id': ObjectId(user_id),
+        'completion_status': 'approved'
+    })
+    if not has_completed_agreement:
+        return jsonify({'error': 'You can review only after project completion approval'}), 403
+
+    existing_review = Review.collection.find_one({
+        'freelancer_id': ObjectId(user_id),
+        'reviewer_id': ObjectId(current_user_id)
+    })
+    if existing_review:
+        return jsonify({'error': 'You have already reviewed this freelancer'}), 409
+
+    data = request.get_json() or {}
+    rating = data.get('rating')
+    comment = (data.get('comment') or '').strip()
+
+    if rating is None:
+        return jsonify({'error': 'Rating is required'}), 400
+    try:
+        rating = int(rating)
+    except Exception:
+        return jsonify({'error': 'Rating must be a number between 1 and 5'}), 400
+    if rating < 1 or rating > 5:
+        return jsonify({'error': 'Rating must be between 1 and 5'}), 400
+    if not comment:
+        return jsonify({'error': 'Comment is required'}), 400
+
+    review_doc = Review.create(
+        freelancer_id=user_id,
+        reviewer_id=current_user_id,
+        rating=rating,
+        comment=comment
+    )
+
+    return jsonify({
+        'message': 'Review submitted successfully',
+        'review': Review.to_dict(review_doc)
+    }), 201
+
+
+@api.route('/reviews/<review_id>', methods=['PUT'])
+@jwt_required()
+def edit_review(review_id):
+    """Edit an existing review (owner only)."""
+    current_user_id = get_jwt_identity()
+    try:
+        review_doc = Review.collection.find_one({'_id': ObjectId(review_id)})
+    except Exception:
+        review_doc = None
+
+    if not review_doc:
+        return jsonify({'error': 'Review not found'}), 404
+
+    if str(review_doc.get('reviewer_id')) != current_user_id:
+        return jsonify({'error': 'You can only edit your own review'}), 403
+
+    data = request.get_json() or {}
+    rating = data.get('rating')
+    comment = (data.get('comment') or '').strip()
+
+    if rating is None:
+        return jsonify({'error': 'Rating is required'}), 400
+    try:
+        rating = int(rating)
+    except Exception:
+        return jsonify({'error': 'Rating must be a number between 1 and 5'}), 400
+    if rating < 1 or rating > 5:
+        return jsonify({'error': 'Rating must be between 1 and 5'}), 400
+    if not comment:
+        return jsonify({'error': 'Comment is required'}), 400
+
+    updated = Review.update(review_id, rating, comment)
+    return jsonify({
+        'message': 'Review updated successfully',
+        'review': Review.to_dict(updated)
+    }), 200
 
 
 @api.route('/freelancers', methods=['GET'])

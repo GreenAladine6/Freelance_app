@@ -25,7 +25,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
 
         <div class="profile-info-center">
           <div class="avatar-wrap">
-              <img [src]="profileImage || selectedAvatarPreview || defaultAvatar" alt="Profile" class="main-avatar" />
+              <img [src]="profileImage || selectedAvatarPreview || defaultAvatar" alt="Profile" class="main-avatar" (error)="onAvatarError($event)" />
             <div class="status-indicator" [class.unavailable]="!isAvailableForHire"></div>
           </div>
           <h2 class="display-name">{{ displayName }}</h2>
@@ -41,6 +41,9 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
             <p *ngIf="rate" class="rate-text">{{ rate }}</p>
             <p class="availability-text" [class.unavailable]="!isAvailableForHire">{{ isAvailableForHire ? 'Available for hire' : 'Not available now' }}</p>
           </div>
+          <p *ngIf="isOwnProfile" class="completion-text">
+            Profile completeness: {{ profileCompleteness }}%
+          </p>
           <div class="profile-actions">
             <button *ngIf="!isOwnProfile" class="message-btn" (click)="goToMessages()">
               <ion-icon name="chatbubbles-outline"></ion-icon>
@@ -71,7 +74,9 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
       <div class="content-sections">
         <div class="section-card">
           <h3>About Me</h3>
-          <p class="body-text">{{ bio }}</p>
+          <p class="body-text" [class.empty-text]="!bio || !bio.trim()">
+            {{ bio && bio.trim() ? bio : (isOwnProfile ? 'Add a short intro so clients can quickly understand what you do best.' : 'No bio added yet.') }}
+          </p>
         </div>
 
         <div class="section-card">
@@ -116,11 +121,17 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         <div class="section-card">
           <div class="section-header">
             <h3>Portfolio</h3>
-            <button class="see-all-btn" [disabled]="portfolioItems.length === 0">See All</button>
+            <button
+              class="see-all-btn"
+              *ngIf="portfolioItems.length > portfolioPreviewCount"
+              (click)="togglePortfolioExpanded()"
+            >
+              {{ portfolioExpanded ? 'Show less' : 'See all' }}
+            </button>
           </div>
           <div class="grid-2" *ngIf="portfolioItems.length > 0; else noPortfolio">
-            <div *ngFor="let item of portfolioItems" class="portfolio-item">
-              <img [src]="item.image" [alt]="item.title" />
+            <div *ngFor="let item of displayedPortfolioItems" class="portfolio-item">
+              <img [src]="item.image" [alt]="item.title" (error)="onPortfolioImageError(item)" />
               <div class="portfolio-overlay">
                 <p>{{ item.title }}</p>
               </div>
@@ -161,11 +172,15 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
           <div *ngIf="reviews.length > 0; else noReviews" class="review-list">
             <div *ngFor="let rev of reviews" class="review-item">
               <div class="review-header">
-                <img [src]="rev.reviewer_avatar_url || defaultAvatar" alt="Reviewer" class="reviewer-avatar" />
+                <img [src]="rev.reviewer_avatar_url || defaultAvatar" alt="Reviewer" class="reviewer-avatar" (error)="onAvatarError($event)" />
                 <div class="reviewer-info">
                   <span class="reviewer-name">{{ rev.reviewer_name }}</span>
                   <div class="reviewer-stars" *ngIf="editingReviewId !== rev.id">
-                    <ion-icon name="star" *ngFor="let str of getStars(rev.rating)"></ion-icon>
+                    <ion-icon
+                      *ngFor="let filled of getStarStates(rev.rating)"
+                      [name]="filled ? 'star' : 'star-outline'"
+                    ></ion-icon>
+                    <span class="review-rating-text">{{ rev.rating || 0 }}/5</span>
                   </div>
                   <div class="star-rating-select-sm" *ngIf="editingReviewId === rev.id">
                     <ion-icon [name]="editReviewRating >= 1 ? 'star' : 'star-outline'" (click)="editReviewRating = 1"></ion-icon>
@@ -192,6 +207,13 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
         </div>
 
         <div class="actions-card" *ngIf="isOwnProfile">
+          <button class="action-btn" (click)="openHelpSupport()">
+            <div class="action-label">
+              <div class="action-icon icon-blue-bg"><ion-icon name="help-circle-outline"></ion-icon></div>
+              <span class="text-blue">Help & Support</span>
+            </div>
+            <ion-icon name="chevron-forward" class="text-blue-light"></ion-icon>
+          </button>
           <button class="action-btn" (click)="handleLogout()">
             <div class="action-label">
               <div class="action-icon icon-red-bg"><ion-icon name="log-out-outline"></ion-icon></div>
@@ -307,6 +329,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .rate-text { font-size: 12px; font-weight: 700; color: #0f6d94; margin: 0; }
     .availability-text { font-size: 12px; font-weight: 700; color: #0f8f63; margin: 0; }
     .availability-text.unavailable { color: #b91c1c; }
+    .completion-text { margin: 8px 0 0; font-size: 11px; font-weight: 700; color: #516675; }
     .profile-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
     .message-btn {
       display: inline-flex; align-items: center; gap: 8px;
@@ -345,6 +368,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .section-header h3 { margin: 0; }
     .see-all-btn { font-size: 10px; font-weight: 700; color: #0f6d94; background: transparent; border: none; }
+    .see-all-btn:hover { text-decoration: underline; }
     .see-all-btn:disabled { opacity: 0.5; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .portfolio-item { aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; position: relative; border: 1px solid #F3F4F6; }
@@ -358,7 +382,10 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .action-btn:last-child { border-bottom: none; }
     .action-label { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 700; color: #2a4150; }
     .action-icon { padding: 8px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .icon-blue-bg { background: #eff6ff; color: #2563eb; }
     .icon-red-bg { background: #FEF2F2; color: #EF4444; }
+    .text-blue { color: #1d4ed8; }
+    .text-blue-light { color: #93c5fd; }
     .text-red { color: #EF4444; }
     .text-red-light { color: #FCA5A5; }
     .chevron { color: #b8c6cf; }
@@ -406,6 +433,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
     .reviewer-info { flex: 1; }
     .reviewer-name { font-size: 13px; font-weight: 700; color: #122531; display: block; }
     .reviewer-stars { color: #c77b00; font-size: 12px; display: flex; gap: 2px; }
+    .review-rating-text { margin-left: 6px; color: #647481; font-size: 11px; font-weight: 700; }
     .review-date { font-size: 11px; color: #80909c; }
     .review-comment { font-size: 12px; color: #3b4e5a; margin: 0; line-height: 1.5; }
     
@@ -425,7 +453,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
 })
 export class FreelancerProfilePage implements OnInit {
   displayName = 'Freelancer';
-  bio = 'Expert UI/UX Designer & Full-stack Developer with over 5 years of experience.';
+  bio = '';
   profileImage = '';
   cvUrl = '';
   selectedAvatarPreview = '';
@@ -434,11 +462,10 @@ export class FreelancerProfilePage implements OnInit {
   rate: string | null = null;
   education: any[] = [];
   experience: any[] = [];
-  portfolioItems = [
-    { id: 1, title: 'E-commerce Website', image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=300' },
-    { id: 2, title: 'Mobile App Design', image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=300' }
-  ];
+  portfolioItems: Array<{ id: number; title: string; image: string }> = [];
   editing = false;
+  portfolioExpanded = false;
+  portfolioPreviewCount = 4;
   editName = '';
   editBio = '';
   editSkills = '';
@@ -479,6 +506,7 @@ export class FreelancerProfilePage implements OnInit {
     let currentUser = this.roleService.user;
     this.selectedAvatarPreview = '';
     this.cvUrl = '';
+    this.portfolioItems = [];
 
     if (!currentUser) {
       try {
@@ -504,6 +532,7 @@ export class FreelancerProfilePage implements OnInit {
           this.rate = u.hourly_rate ? '$' + u.hourly_rate + '/hr' : null;
           this.education = u.education || [];
           this.experience = u.experience || [];
+          this.portfolioItems = this.normalizePortfolioItems(u.portfolio);
           this.isAvailableForHire = u.is_available_for_hire !== false;
         }
       } catch { }
@@ -518,6 +547,7 @@ export class FreelancerProfilePage implements OnInit {
         this.rate = currentUser.hourly_rate ? '$' + currentUser.hourly_rate + '/hr' : 'Negotiable';
         this.education = currentUser.education || [];
         this.experience = currentUser.experience || [];
+        this.portfolioItems = this.normalizePortfolioItems(currentUser.portfolio);
         this.isAvailableForHire = currentUser.is_available_for_hire !== false;
       }
     }
@@ -593,13 +623,7 @@ export class FreelancerProfilePage implements OnInit {
         this.education = updated.user.education || this.education;
         this.experience = updated.user.experience || this.experience;
         this.isAvailableForHire = updated.user.is_available_for_hire !== false;
-        this.portfolioItems = updated.user.portfolio?.length
-          ? updated.user.portfolio.map((item: any, index: number) => ({
-              id: index + 1,
-              title: item.title || 'Project',
-              image: item.image_url || item.image || this.defaultAvatar,
-            }))
-          : this.portfolioItems;
+        this.portfolioItems = this.normalizePortfolioItems(updated.user.portfolio);
         this.roleService.updateCurrentUser(updated.user);
       }
       this.saveMsg = "Profile saved!";
@@ -680,6 +704,17 @@ export class FreelancerProfilePage implements OnInit {
     return (items || []).map(item => [item?.title, item?.image || item?.image_url].filter(Boolean).join(' | ')).join('\n');
   }
 
+  private normalizePortfolioItems(items: any[] | undefined): Array<{ id: number; title: string; image: string }> {
+    if (!items || !items.length) {
+      return [];
+    }
+    return items.map((item: any, index: number) => ({
+      id: index + 1,
+      title: item?.title || 'Project',
+      image: item?.image_url || item?.image || this.defaultAvatar
+    }));
+  }
+
   private parseEducation(text: string): any[] {
     return this.parseLines(text, ['degree', 'school', 'year']);
   }
@@ -752,13 +787,59 @@ export class FreelancerProfilePage implements OnInit {
     }
   }
 
-  getStars(rating: number): number[] {
-    return new Array(rating || 0);
+  get profileCompleteness(): number {
+    const checks = [
+      !!this.displayName?.trim(),
+      !!this.bio?.trim(),
+      this.skills.length > 0,
+      this.education.length > 0,
+      this.experience.length > 0,
+      this.portfolioItems.length > 0,
+      !!this.profileImage,
+      !!this.cvUrl
+    ];
+    const completed = checks.filter(Boolean).length;
+    return Math.round((completed / checks.length) * 100);
+  }
+
+  get displayedPortfolioItems() {
+    if (this.portfolioExpanded) {
+      return this.portfolioItems;
+    }
+    return this.portfolioItems.slice(0, this.portfolioPreviewCount);
+  }
+
+  togglePortfolioExpanded() {
+    this.portfolioExpanded = !this.portfolioExpanded;
+  }
+
+  getStarStates(rating: number): boolean[] {
+    const normalizedRating = Math.max(0, Math.min(5, Number(rating) || 0));
+    return Array.from({ length: 5 }, (_, index) => index < normalizedRating);
+  }
+
+  onAvatarError(event: Event) {
+    const img = event.target as HTMLImageElement;
+    if (img && img.src !== this.defaultAvatar) {
+      img.src = this.defaultAvatar;
+    }
+  }
+
+  onPortfolioImageError(item: any) {
+    item.image = this.defaultAvatar;
   }
 
   handleLogout() {
     this.roleService.logout();
     this.router.navigate(['/login']);
+  }
+
+  openHelpSupport() {
+    if (!this.roleService.isAuthenticated) {
+      this.router.navigate(['/login']);
+      return;
+    }
+    this.router.navigate(['/help-support']);
   }
 
   startEditReview(rev: any) {

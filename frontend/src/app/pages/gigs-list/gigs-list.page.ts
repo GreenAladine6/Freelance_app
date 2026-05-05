@@ -115,7 +115,7 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
            <input type="number" [(ngModel)]="applyRate" placeholder="0" />
            <p class="apply-hint" *ngIf="!hasReviewedDetails">Please review and confirm job details first.</p>
            <p class="apply-error" *ngIf="applyError">{{ applyError }}</p>
-           <button class="apply-btn" [disabled]="applying || !hasReviewedDetails" (click)="submitApplication()">
+          <button class="apply-btn" [disabled]="applying" (click)="submitApplication()">
              {{ applying ? 'Submitting...' : 'Apply for this Job' }}
            </button>
          </div>
@@ -381,16 +381,34 @@ export class GigsListPage implements OnInit {
     if (!this.selectedJob) return;
     if (this.isClient()) {
       this.applyError = 'Clients cannot apply to jobs.';
+      const t = await this.toast.create({
+        message: this.applyError,
+        duration: 2200,
+        color: 'danger'
+      });
+      t.present();
       return;
     }
 
     if (!this.applyCoverLetter.trim()) {
       this.applyError = 'Please add a cover letter.';
+      const t = await this.toast.create({
+        message: this.applyError,
+        duration: 2200,
+        color: 'warning'
+      });
+      t.present();
       return;
     }
 
     if (!this.hasReviewedDetails) {
       this.applyError = 'Please review job details before applying.';
+      const t = await this.toast.create({
+        message: this.applyError,
+        duration: 2200,
+        color: 'warning'
+      });
+      t.present();
       return;
     }
 

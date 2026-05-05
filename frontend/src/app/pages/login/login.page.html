@@ -52,6 +52,28 @@
         </div>
       </div>
 
+      <div class="verification-box" *ngIf="requiresVerification">
+        <p class="verification-note">Your email is not verified yet. Enter the code sent to your email.</p>
+        <div class="input-wrapper">
+          <ion-icon name="key-outline" class="input-icon"></ion-icon>
+          <ion-input
+            type="text"
+            [(ngModel)]="verificationCode"
+            maxlength="6"
+            placeholder="6-digit code"
+            class="custom-input">
+          </ion-input>
+        </div>
+        <div class="verification-actions">
+          <button type="button" class="mini-btn primary" [disabled]="loading || !verificationCode.trim()" (click)="verifyEmail()">
+            Verify Email
+          </button>
+          <button type="button" class="mini-btn" [disabled]="loading" (click)="resendVerificationCode()">
+            Resend Code
+          </button>
+        </div>
+      </div>
+
       <!-- Sign In Button -->
       <button
         type="submit"

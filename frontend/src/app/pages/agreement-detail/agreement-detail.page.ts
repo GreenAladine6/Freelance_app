@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { IonicModule, ToastController } from '@ionic/angular';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService, ApiAgreement } from '../../services/api.service';
 import { RoleService } from '../../services/role.service';
@@ -8,7 +9,7 @@ import { RoleService } from '../../services/role.service';
 @Component({
   selector: 'app-agreement-detail',
   standalone: true,
-  imports: [CommonModule, IonicModule],
+  imports: [CommonModule, IonicModule, FormsModule],
   template: `
     <ion-header class="ion-no-border">
       <ion-toolbar>
@@ -117,6 +118,37 @@ import { RoleService } from '../../services/role.service';
             <ion-icon name="wallet-outline" slot="start"></ion-icon>
             Pay \${{ agreement.budget.toFixed(2) }} Now
           </ion-button>
+
+          <div
+            class="optional-review-box"
+            *ngIf="agreement.completion_status === 'submitted'"
+          >
+            <h4>Optional Review</h4>
+            <p class="optional-review-hint">
+              You can approve now and optionally leave stars and feedback for the freelancer.
+            </p>
+            <div class="star-picker">
+              <ion-icon
+                *ngFor="let star of [1, 2, 3, 4, 5]"
+                [name]="completionReviewRating >= star ? 'star' : 'star-outline'"
+                (click)="completionReviewRating = star"
+              ></ion-icon>
+              <button
+                type="button"
+                class="clear-rating-btn"
+                *ngIf="completionReviewRating > 0"
+                (click)="completionReviewRating = 0"
+              >
+                Clear
+              </button>
+            </div>
+            <ion-textarea
+              [(ngModel)]="completionReviewText"
+              placeholder="Write optional feedback..."
+              autoGrow="true"
+              class="optional-review-textarea"
+            ></ion-textarea>
+          </div>
 
           <ion-button
             expand="block"
@@ -344,6 +376,63 @@ import { RoleService } from '../../services/role.service';
       opacity: 0.6;
     }
 
+    .optional-review-box {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .optional-review-box h4 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #78350f;
+    }
+
+    .optional-review-hint {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: #92400e;
+      line-height: 1.45;
+    }
+
+    .star-picker {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .star-picker ion-icon {
+      font-size: 22px;
+      color: #f59e0b;
+      cursor: pointer;
+    }
+
+    .clear-rating-btn {
+      margin-left: 8px;
+      border: none;
+      background: transparent;
+      color: #7c3aed;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .optional-review-textarea {
+      --background: #ffffff;
+      --padding-start: 10px;
+      --padding-end: 10px;
+      --padding-top: 8px;
+      --padding-bottom: 8px;
+      border: 1px solid #fcd34d;
+      border-radius: 10px;
+      color: #1f2937;
+      font-size: 13px;
+    }
+
     ion-spinner {
       display: flex;
       justify-content: center;
@@ -358,6 +447,8 @@ export class AgreementDetailPage implements OnInit {
   isClient = false;
   isFreelancer = false;
   currentUserId = '';
+  completionReviewRating = 0;
+  completionReviewText = '';
 
   constructor(
     private route: ActivatedRoute,
@@ -450,11 +541,42 @@ export class AgreementDetailPage implements OnInit {
       next: (res) => {
         this.agreement = res.agreement;
         this.showToast('Project approved! Payment released.', 'success');
+        this.trySubmitOptionalReview();
         this.loading = false;
       },
       error: (err) => {
         this.showToast('Failed to approve completion', 'danger');
         this.loading = false;
+      }
+    });
+  }
+
+  private trySubmitOptionalReview() {
+    if (!this.agreement) return;
+    const text = this.completionReviewText.trim();
+    const hasText = text.length > 0;
+    const hasRating = this.completionReviewRating > 0;
+
+    if (!hasText && !hasRating) {
+      return;
+    }
+
+    if (!hasText || !hasRating) {
+      this.showToast('Review is optional. To submit it, add both stars and comment.', 'danger');
+      return;
+    }
+
+    this.api.addReview(this.agreement.freelancer_id, {
+      rating: this.completionReviewRating,
+      comment: text
+    }).subscribe({
+      next: () => {
+        this.completionReviewRating = 0;
+        this.completionReviewText = '';
+        this.showToast('Thanks! Your review was submitted.', 'success');
+      },
+      error: () => {
+        this.showToast('Project approved, but review could not be submitted.', 'danger');
       }
     });
   }

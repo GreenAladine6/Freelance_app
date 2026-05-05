@@ -55,6 +55,11 @@ export interface RegisterPayload {
     portfolio?: any[];
 }
 
+export interface EmailVerificationPayload {
+    email: string;
+    code: string;
+}
+
 export interface ApiJob {
     id: string;
     title: string;
@@ -201,14 +206,22 @@ export class ApiService {
         return this.http.post<GoogleLoginResponse>(`${this.baseUrl}/login-google`, { token });
     }
 
-    register(payload: RegisterPayload): Observable<{ message: string; user: ApiUser }> {
-        return this.http.post<{ message: string; user: ApiUser }>(`${this.baseUrl}/register`, payload);
+    register(payload: RegisterPayload): Observable<{ message: string; user: ApiUser; requires_email_verification?: boolean; verification_code?: string }> {
+        return this.http.post<{ message: string; user: ApiUser; requires_email_verification?: boolean; verification_code?: string }>(`${this.baseUrl}/register`, payload);
     }
 
     refresh(refreshToken: string): Observable<{ access_token: string }> {
         return this.http.post<{ access_token: string }>(`${this.baseUrl}/refresh`, {}, {
             headers: { Authorization: `Bearer ${refreshToken}` }
         });
+    }
+
+    verifyEmail(payload: EmailVerificationPayload): Observable<{ message: string }> {
+        return this.http.post<{ message: string }>(`${this.baseUrl}/verify-email`, payload);
+    }
+
+    resendVerificationCode(email: string): Observable<{ message: string; verification_code?: string }> {
+        return this.http.post<{ message: string; verification_code?: string }>(`${this.baseUrl}/resend-verification-code`, { email });
     }
 
     // ── Profile ───────────────────────────────────────────

@@ -20,6 +20,14 @@ export class AuthService {
     );
   }
 
+  verifyEmail(email: string, code: string): Observable<any> {
+    return this.api.verifyEmail({ email, code });
+  }
+
+  resendVerificationCode(email: string): Observable<any> {
+    return this.api.resendVerificationCode(email);
+  }
+
   logout(): void {
     this.role.logout();
   }
