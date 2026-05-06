@@ -33,7 +33,8 @@ import { RealtimeChatService } from '../../services/realtime-chat.service';
 
     <ion-content class="chat-content" #content>
       <div class="message-alert" *ngIf="messageError">
-        {{ messageError }}
+        <span>{{ messageError }}</span>
+        <button class="retry-btn" *ngIf="lastFailedMessage" (click)="retryLastMessage()">Tap to retry</button>
       </div>
       <div class="message-list">
         <div *ngIf="messages.length === 0" class="empty-chat-state">
@@ -91,6 +92,17 @@ import { RealtimeChatService } from '../../services/realtime-chat.service';
       border: 1px solid #fecaca;
       font-size: 13px;
       font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .retry-btn {
+      background: none;
+      border: none;
+      color: #991b1b;
+      font-weight: 700;
+      text-decoration: underline;
+      cursor: pointer;
     }
     .message-list { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
     .empty-chat-state {
@@ -163,6 +175,7 @@ export class ChatPage implements OnInit, OnDestroy {
   currentUserId = '';
   otherUser: any = null;
   messageError = '';
+  lastFailedMessage: { conversation_id: string, text: string } | null = null;
   private realtimeSub?: Subscription;
   private realtimeErrorSub?: Subscription;
   private tempMessageCounter = 0;
@@ -241,6 +254,9 @@ export class ChatPage implements OnInit, OnDestroy {
       console.error('Realtime chat error:', err);
       this.messageError = err;
       this.removePendingMessage();
+      if (this.lastFailedMessage) {
+        this.messageError = 'Message failed to send.';
+      }
     });
   }
 
@@ -264,12 +280,23 @@ export class ChatPage implements OnInit, OnDestroy {
     const text = this.inputValue.trim();
     if (!text) return;
 
-    this.messageError = '';
     this.inputValue = '';
+    this.sendMessage(this.conversationId, text);
+  }
+
+  retryLastMessage() {
+    if (!this.lastFailedMessage) return;
+    const { conversation_id, text } = this.lastFailedMessage;
+    this.sendMessage(conversation_id, text);
+  }
+
+  private sendMessage(conversation_id: string, text: string) {
+    this.messageError = '';
+    this.lastFailedMessage = null;
 
     const optimisticMessage: ApiMessage = {
       id: `temp-${Date.now()}-${this.tempMessageCounter++}`,
-      conversation_id: this.conversationId,
+      conversation_id,
       sender_id: this.currentUserId,
       text,
       is_read: true,
@@ -281,23 +308,20 @@ export class ChatPage implements OnInit, OnDestroy {
     this.scrollToBottom();
 
     if (this.realtimeChat.isConnected) {
-      this.realtimeChat.sendMessage(this.conversationId, text);
+      this.realtimeChat.sendMessage(conversation_id, text);
       return;
     }
 
-    this.api.sendMessage({
-      conversation_id: this.conversationId,
-      text: text
-    }).subscribe(msg => {
+    this.api.sendMessage({ conversation_id, text }).subscribe(msg => {
       this.messages = this.messages.filter(m => m.id !== optimisticMessage.id);
       this.messages.push(msg);
       this.pendingTempMessageId = null;
       this.scrollToBottom();
     }, () => {
-      // Keep UI consistent if send fails.
       this.messages = this.messages.filter(m => m.id !== optimisticMessage.id);
       this.pendingTempMessageId = null;
       this.messageError = 'Message could not be sent.';
+      this.lastFailedMessage = { conversation_id, text };
     });
   }
 

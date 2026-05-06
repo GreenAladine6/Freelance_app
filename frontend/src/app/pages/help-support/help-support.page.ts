@@ -132,12 +132,12 @@ import { BottomNavComponent } from '../../components/bottom-nav/bottom-nav.compo
 })
 export class HelpSupportPage {
   admin = {
-    email: 'admin@freelancehub.app',
-    phone: '+212 6 12 34 56 78',
-    phoneRaw: '+212612345678',
-    whatsapp: '212612345678',
+    email: 'dourayedg@gmail.com',
+    phone: '+216 99315348',
+    phoneRaw: '+21699315348',
+    whatsapp: '21699315348',
     hours: 'Mon-Sat, 09:00-19:00'
   };
 
-  constructor(public router: Router) {}
+  constructor(public router: Router) { }
 }

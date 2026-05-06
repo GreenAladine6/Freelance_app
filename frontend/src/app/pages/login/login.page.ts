@@ -110,7 +110,7 @@ export class LoginPage {
 
   async verifyEmail() {
     const email = this.loginForm.get('email')?.value;
-    const code = this.verificationCode.trim();
+    const code = (this.verificationCode || '').trim();
 
     if (!email || !code) {
       this.showToast('Enter email and verification code', 'warning');
