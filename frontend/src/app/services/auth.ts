@@ -14,6 +14,20 @@ export class AuthService {
     );
   }
 
+  loginWithGoogle(googleToken: string): Observable<any> {
+    return this.api.loginWithGoogle(googleToken).pipe(
+      tap(res => this.role.handleLoginSuccess(res))
+    );
+  }
+
+  verifyEmail(email: string, code: string): Observable<any> {
+    return this.api.verifyEmail({ email, code });
+  }
+
+  resendVerificationCode(email: string): Observable<any> {
+    return this.api.resendVerificationCode(email);
+  }
+
   logout(): void {
     this.role.logout();
   }

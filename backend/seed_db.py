@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import random
 from bson import ObjectId
 
-from models import User, Job, Application, Conversation
+from models import User, Job, Application, Conversation, AdminLog, Report
 
 print("Seeding FreelanceHub Database...")
 
@@ -12,10 +12,13 @@ print("Seeding FreelanceHub Database...")
 User.collection.delete_many({})
 Job.collection.delete_many({})
 Application.collection.delete_many({})
+AdminLog.collection.delete_many({})
+Report.collection.delete_many({})
 db = User.collection.database
 db.products.delete_many({})
 db.messages.delete_many({})
 db.conversations.delete_many({})
+db.profile_update_logs.delete_many({})
 print("Cleared existing collections.")
 
 # Add users
@@ -48,6 +51,29 @@ for u in users:
     )
     created_users[u['username']] = user_doc['_id']
 
+# Add Jobs
+jobs = [
+    {
+        'title': 'Frontend Developer Needed',
+        'description': 'Looking for a React expert to build a dashboard.',
+        'budget': '500-1000$',
+        'client_id': created_users['techcorp'],
+        'is_approved': True,
+        'status': 'open',
+        'created_at': datetime.utcnow()
+    },
+    {
+        'title': 'Logo Design for Startup',
+        'description': 'Need a modern logo for a new fintech startup.',
+        'budget': '200$',
+        'client_id': created_users['startup'],
+        'is_approved': False,
+        'status': 'open',
+        'created_at': datetime.utcnow()
+    }
+]
+Job.collection.insert_many(jobs)
+
 # Add Education & Experience to Alex
 User.collection.update_one({'_id': created_users['alexc']}, {
     '$set': {
@@ -61,10 +87,32 @@ User.collection.update_one({'_id': created_users['alexc']}, {
 })
 
 # Add Store Products
-products = [
-    {'name': 'Premium Dashboard Kit', 'description': 'Modern UI Kit for SaaS Designers', 'price': 49.99, 'category': 'UI Kits', 'seller_id': created_users['alexc'], 'image_url': 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop'},
-    {'name': 'Icon Collection - 500+', 'description': 'Multi-style icon set for web', 'price': 24.99, 'category': 'Icons', 'seller_id': created_users['sarahm'], 'image_url': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop'}
+product_templates = [
+    ('Premium Dashboard Kit', 'Modern UI Kit for SaaS Designers', 'UI Kits', 49.99, 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop'),
+    ('Icon Collection', 'Multi-style icon set for web', 'Icons', 24.99, 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop'),
+    ('Landing Page Pack', 'High-converting landing page templates', 'Templates', 39.99, 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop'),
+    ('Social Media Kit', 'Editable social banners and posts', 'Graphics', 19.99, 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=300&fit=crop'),
+    ('Wireframe Bundle', 'Low-fidelity app wireframes', 'UI Kits', 29.99, 'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?w=400&h=300&fit=crop'),
+    ('Brand Identity Pack', 'Logo, palette, and brand guide assets', 'Graphics', 59.99, 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=400&h=300&fit=crop'),
+    ('App Icon Set', 'Rounded icons for mobile apps', 'Icons', 17.99, 'https://images.unsplash.com/photo-1558655146-d09347e92766?w=400&h=300&fit=crop'),
+    ('Portfolio Template', 'Elegant portfolio layout for creatives', 'Templates', 34.99, 'https://images.unsplash.com/photo-1513258496099-48168024aec0?w=400&h=300&fit=crop')
 ]
+
+seller_ids = [created_users['alexc'], created_users['sarahm'], created_users['davidw']]
+products = []
+for index in range(50):
+    name, description, category, price, image_url = random.choice(product_templates)
+    products.append({
+        'name': f'{name} {index + 1}',
+        'description': description,
+        'price': round(price + random.uniform(-5, 12), 2),
+        'category': category,
+        'seller_id': random.choice(seller_ids),
+        'is_approved': True,
+        'image_url': image_url,
+        'created_at': datetime.utcnow() - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
+    })
+
 db.products.insert_many(products)
 
 # Create a conversation
@@ -76,4 +124,16 @@ msgs = [
 db.messages.insert_many(msgs)
 db.conversations.update_one({'_id': conv['_id']}, {'$set': {'last_message_at': datetime.utcnow()}})
 
-print("Database successfully seeded with Chat, Store, and CV data!")
+# Add AdminLogs & Reports
+print("Seeding Admin data...")
+AdminLog.create(created_users['admin'], "Platform Initialization", details="Database seeded for initial launch")
+AdminLog.create(created_users['admin'], "Approved verified freelancer: Alex Chen")
+AdminLog.create(created_users['admin'], "Settings Update", details="Platform fees updated to 5%")
+
+reports = [
+    {'reporter_id': created_users['sarahm'], 'reason': 'Spam messaging', 'target_type': 'user', 'target_id': created_users['davidw'], 'status': 'pending', 'created_at': datetime.utcnow() - timedelta(days=1)},
+    {'reporter_id': created_users['alexc'], 'reason': 'Inappropriate content in Gig description', 'target_type': 'gig', 'target_id': ObjectId(), 'status': 'pending', 'created_at': datetime.utcnow()}
+]
+Report.collection.insert_many(reports)
+
+print("Database successfully seeded with Chat, Store, CV and Admin data!")

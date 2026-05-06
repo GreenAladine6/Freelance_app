@@ -41,6 +41,11 @@ export class RoleService {
         localStorage.setItem(USER_KEY, JSON.stringify(login.user));
     }
 
+    updateCurrentUser(user: ApiUser): void {
+        this._user.next(user);
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
+    }
+
     logout(): void {
         this._accessToken.next(null);
         this._refreshToken.next(null);

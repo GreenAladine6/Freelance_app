@@ -10,6 +10,7 @@
     "src/polyfills.ts"
   ],
   "include": [
+    "src/app/pages/help-support/**/*.ts",
     "src/**/*.d.ts"
   ]
 }

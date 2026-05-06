@@ -3,12 +3,15 @@ from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
+from flask_socketio import SocketIO
 
 # Load environment variables from .env file
 load_dotenv()
 
 from config import config
 from routes import api
+
+socketio = SocketIO(cors_allowed_origins='*', async_mode='threading')
 
 def create_app(config_name=None):
     """Application factory pattern."""
@@ -29,9 +32,14 @@ def create_app(config_name=None):
         max_age=600,
     )
     jwt = JWTManager(app)
+    socketio.init_app(app)
     
     # Register blueprints
     app.register_blueprint(api, url_prefix='/api')
+
+    # Register Socket.IO events after app and extensions are initialized.
+    from socket_events import register_socket_events
+    register_socket_events(socketio)
     
     return app
 
@@ -41,4 +49,4 @@ app = create_app()
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)

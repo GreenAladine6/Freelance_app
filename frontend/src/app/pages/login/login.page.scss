@@ -168,6 +168,44 @@ form {
   }
 }
 
+.verification-box {
+  border: 1px solid #e9d5ff;
+  background: #faf5ff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.verification-note {
+  margin: 0 0 10px;
+  color: #6b21a8;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.verification-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mini-btn {
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  color: #3f3f46;
+  border-radius: 9999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mini-btn.primary {
+  border-color: #7B2FBE;
+  background: #7B2FBE;
+  color: #fff;
+}
+
 // ── Sign In button ───────────────────────────────────────────────────────────
 .sign-in-btn {
   width: 100%;
